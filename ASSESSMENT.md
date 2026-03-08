@@ -226,3 +226,69 @@ The full game build (Option A) is a **nice-to-have** that becomes justified only
 | Is the timing right? | **No.** Revenue-generating work comes first. Correct to defer. |
 | What's the right move? | **Option C: 2-3 day wallet spike** after P0-P1 stabilize. Extracts 80% of learning at 15% cost. Full build only if spike succeeds + AuraNet v4 is in planning. |
 | Overall verdict | **Validated as strategic learning investment. De-scoped from 2-4 weeks to 2-3 days for the critical path. Park the full build until it has a downstream revenue consumer.** |
+
+---
+
+## Part 4: Outcome (2026-03-08)
+
+### What Was Actually Built
+
+The experiment significantly exceeded Option C (wallet spike) scope — and completed faster than the spike's 2-3 day estimate:
+
+| Planned (Option C) | Actually Built | Time |
+|---------------------|---------------|------|
+| Create two DevNet wallets | Two wallets + funding + transfers | ~20 min |
+| Execute a single transfer | Full game engine + HITL settlement | ~15 min |
+| Document DX quality | Claude tool-use agents (Haiku 4.5, 3 tools) | ~15 min |
+| — | Visual ANSI TUI demo with pacing | ~1h |
+| — | Best-of-3 series with per-game staking | ~30 min |
+| — | Parimutuel prediction market (AI + user bets) | ~30 min |
+| — | Round system with "go again?" replay loop | ~30 min |
+| — | Agent strategy upgrade (stakes motivation) | ~15 min |
+| — | 3 edge case bug fixes (series/market/renderer) | ~30 min |
+| **Total: 2-3 days** | **Total: ~5 hours** | **~5h** |
+
+### EVRICE Retrospective
+
+Option C scored 288 and was recommended. In hindsight:
+
+- **Expected Value (3)**: Confirmed. Learning compounded beyond expectation — not just wallet infra but also agent patterns, market mechanics, and TUI rendering.
+- **Reach (2)**: Slightly exceeded. GitHub repo with README + screenshot is a concrete demo asset. Could be shared.
+- **Impact (3)**: Confirmed. Patterns transfer directly to AuraNet v4 (wallet infra) and a-team-test (tool-use agent pattern).
+- **Confidence (4)**: Validated. Small scope was highly predictable — and the expansion was organic, not forced.
+- **Effort^-1 (4)**: **Exceeded.** Completed in ~5h, not 2-3 days. Claude Code as co-developer was the multiplier.
+
+**Revised EVRICE-C (actual): 4 × 3 × 3 × 5 × 5 = 900** (vs. predicted 288).
+
+### Risk Scan Retrospective
+
+| Predicted Risk | What Happened |
+|---------------|---------------|
+| Solana Agent Kit has poor DX | **Did not use Agent Kit** — raw @solana/web3.js v1 was sufficient and excellent. Agent Kit unnecessary for this scope. |
+| Scope creep into full game build | **Materialized — productively.** Assessment warned "fun projects expand." It did, but the 1h core meant expansion stayed within a single day. The scope creep produced the most valuable outputs (TUI, prediction market, series logic). |
+| Learning doesn't transfer to AuraNet | **Too early to confirm.** Patterns are documented. Transfer depends on AuraNet v4 timeline. |
+
+### Updated Go/No-Go Status
+
+| Criterion | Original | Updated |
+|-----------|----------|---------|
+| Go for wallet spike | When FanServiceV2 revenue OR natural gap | **DONE** — completed 2026-03-08 |
+| Go for full Phase 0 | When spike confirms DX + AuraNet v4 planning | **DONE** — full Phase 0 effectively complete. Anchor escrow is the only remaining piece for production. |
+| Kill signal: >3 days no transfer | — | **Not triggered** — first transfer in <1h |
+
+### Updated Confidence Levels
+
+| Metric | Before | After | Classification |
+|--------|--------|-------|----------------|
+| Solana agent wallet DX | 0.60 | **0.95** | Observed — built and tested |
+| Claude tool-use for agents | 0.70 | **0.95** | Observed — zero failures |
+| x402 category certainty | 0.85 | **0.85** | Unchanged — experiment validates feasibility, not market demand |
+| Agent-duel feasibility | 0.75 | **0.95** | Observed — full demo working |
+
+### Honest Reflection
+
+The assessment said: *"Does a solo founder on 6-month runway need to build a tic-tac-toe game to learn Solana agent wallets? No."* That was correct in principle. But the actual execution revealed something the assessment couldn't predict: Claude Code compressed the effort so dramatically (~5h vs 2-3 days) that the opportunity cost argument largely dissolved.
+
+The scope creep risk materialized exactly as predicted — and was exactly the right call. When the wallet spike took 20 minutes instead of 2-3 days, expanding into the full demo was the highest-ROI use of the remaining time.
+
+**Key meta-learning:** EVRICE Effort^-1 scores should account for AI-assisted development speed. Our estimates were calibrated for solo work. Claude Code as co-developer shifts the effort curve by roughly 5-10x for this class of prototype.
