@@ -1,0 +1,19 @@
+{
+  "name": "agent-duel",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "wallet-test": "tsx src/main.ts --level 1",
+    "game-test": "tsx src/main.ts --level 2",
+    "agents": "tsx src/main.ts --level 3"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}
