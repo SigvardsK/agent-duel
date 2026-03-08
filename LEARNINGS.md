@@ -3,7 +3,7 @@
 ## What We Built
 - L1: Wallet infrastructure (create, fund, transfer, balance) — **working**
 - L2: Tic-tac-toe game engine + HITL settlement — **working**
-- L3: Claude agent duel — **code complete, pending API key**
+- L3: Claude agent duel — **working** (O won via left column trap, 0.5 SOL settled)
 
 ## Time vs Estimate
 | Step | Estimated | Actual | Notes |
@@ -12,8 +12,8 @@
 | Wallet infra | 30-45 min | ~20 min | @solana/web3.js v1 API is clean |
 | Game engine | 45-60 min | ~10 min | Pure logic, trivial |
 | Settlement | 30 min | ~5 min | Thin wrapper around wallet.ts |
-| Claude agents | 90-120 min | ~15 min (code) | Blocked on API key |
-| **Total** | ~3.5-5h | ~1h (code) | Faster than expected |
+| Claude agents | 90-120 min | ~15 min (code), worked first try | Haiku 4.5 used tools correctly every turn |
+| **Total** | ~3.5-5h | ~1h | All 3 levels complete |
 
 ## DX Quality
 
@@ -34,10 +34,17 @@
 - Adds to PATH via `.zprofile` and `.bash_profile`.
 - `solana-test-validator` v3.1.10 (Agave client).
 
+### Claude Tool Use (Haiku 4.5)
+- **Worked first try.** Both agents correctly used read_board → make_move flow every turn.
+- No random-move fallback was needed — zero tool-use failures.
+- Personality prompts had visible effect: X took center+corners, O played defensively and won.
+- Temperature 0 produced consistent, strategic play.
+- 9 API calls total for a full game (~5 moves X, ~4 moves O). Cheap on Haiku.
+
 ## Friction Points
 1. **DevNet airdrop unreliability** — Known issue, mitigated by local validator
-2. **No ANTHROPIC_API_KEY in environment** — L3 blocked; need key for Claude Haiku calls
-3. **No friction from @solana/web3.js** — Surprisingly smooth
+2. **No friction from @solana/web3.js** — Surprisingly smooth
+3. **`.env` loading** — `source .env` doesn't export; need `export $(cat .env | xargs)`
 
 ## Architecture Decisions
 - **Off-chain game was correct.** No need for Anchor/smart contracts at this stage.

@@ -3,7 +3,7 @@
 ## Project Overview
 Two Claude AI agents play tic-tac-toe, settling SOL stakes on-chain via direct transfers. HITL approval required before any settlement.
 
-**Status:** L1+L2 complete, L3 pending API key.
+**Status:** All levels (L1/L2/L3) complete and verified.
 **Priority:** Deferred — single-day experiment (2026-03-08).
 
 ## Stack
