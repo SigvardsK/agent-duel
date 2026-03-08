@@ -13,7 +13,8 @@ export interface SettlementConfig {
 export async function settleGame(
   connection: Connection,
   config: SettlementConfig,
-  winner: Player | "draw"
+  winner: Player | "draw",
+  approveFn?: (prompt: string) => Promise<boolean>
 ): Promise<void> {
   if (winner === "draw") {
     console.log("\n[settlement] Draw — no transfer needed.");
@@ -28,9 +29,10 @@ export async function settleGame(
     `\n[settlement] ${winner} wins! Proposed: ${config.stake} SOL from ${loser.name} → ${winnerWallet.name}`
   );
 
-  const approved = await askApproval(
-    `Settle ${config.stake} SOL from ${loser.name} → ${winnerWallet.name}? [Y/n] `
-  );
+  const prompt = `Settle ${config.stake} SOL from ${loser.name} → ${winnerWallet.name}? [Y/n] `;
+  const approved = approveFn
+    ? await approveFn(prompt)
+    : await askApproval(prompt);
 
   if (!approved) {
     console.log("[settlement] Settlement declined.");

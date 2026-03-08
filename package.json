@@ -6,7 +6,8 @@
     "start": "tsx src/main.ts",
     "wallet-test": "tsx src/main.ts --level 1",
     "game-test": "tsx src/main.ts --level 2",
-    "agents": "tsx src/main.ts --level 3"
+    "agents": "tsx src/main.ts --level 3",
+    "demo": "tsx src/demo.ts"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.0",
