@@ -1,5 +1,5 @@
 import { GameState, Cell, Player } from "./game.js";
-import { Market, getOdds } from "./market.js";
+import { Market, Payout, getOdds } from "./market.js";
 
 // ─── ANSI Helpers ────────────────────────────────────────────
 
@@ -72,9 +72,10 @@ export interface DuelState {
   pot: number;
   game?: GameState;
   series?: SeriesState;
-  market?: Market;
+  market?: Market & { payouts?: Payout[] };
   status: string;
   phase: string;
+  round?: number;
 }
 
 // ─── Render ──────────────────────────────────────────────────
@@ -99,8 +100,9 @@ export function renderFrame(state: DuelState): void {
   const lines: string[] = [];
 
   // Title
+  const roundLabel = state.round && state.round > 1 ? `  Round ${state.round}` : "";
   const title = state.series
-    ? `${bold("AGENT DUEL")}  —  Best of 3`
+    ? `${bold("AGENT DUEL")}  —  Best of 3${roundLabel}`
     : `${bold("AGENT DUEL")}  —  Solana Stakes`;
   lines.push(`  ╔═${BORDER_H}═╗`);
   lines.push(line(center(title, W)));
@@ -168,10 +170,20 @@ export function renderFrame(state: DuelState): void {
   // Predictions panel
   if (state.market && state.market.bets.length > 0) {
     const odds = getOdds(state.market);
-    lines.push(line(`${dim("┌─")} Predictions ${dim("─".repeat(W - 17) + "┐")}`));
-    for (const bet of state.market.bets) {
+    const label = state.market.resolved ? "Results" : "Predictions";
+    lines.push(line(`${dim("┌─")} ${label} ${dim("─".repeat(W - label.length - 5) + "┐")}`));
+    for (let i = 0; i < state.market.bets.length; i++) {
+      const bet = state.market.bets[i];
       const sideColor = bet.side === "X" ? cyan : red;
-      const betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(bet.side))}`;
+      let betText: string;
+      if (state.market.resolved && state.market.payouts && state.market.payouts[i]) {
+        const p = state.market.payouts[i];
+        const sign = p.profit >= 0 ? "+" : "";
+        const profitColor = p.profit >= 0 ? green : red;
+        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(bet.side))}  ${profitColor(bold(sign + p.profit.toFixed(2)))}`;
+      } else {
+        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(bet.side))}`;
+      }
       lines.push(line(`${dim("│")} ${padRight(betText, W - 4)} ${dim("│")}`));
     }
     const oddsText = `Pool: ${yellow(bold(state.market.pool.toFixed(2) + " SOL"))}  Odds: ${cyan(`X ${odds.x}%`)} ${red(`O ${odds.o}%`)}`;
