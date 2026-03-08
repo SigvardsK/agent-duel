@@ -179,7 +179,10 @@ async function runSeries(
 
   if (state.series.scoreX >= WINS_NEEDED) return "X";
   if (state.series.scoreO >= WINS_NEEDED) return "O";
-  return "draw";
+  // Max games reached — whoever has more wins takes the series
+  if (state.series.scoreX > state.series.scoreO) return "X";
+  if (state.series.scoreO > state.series.scoreX) return "O";
+  return "draw"; // truly tied scores only (e.g., 0-0 or 1-1)
 }
 
 // ─── Round (betting + series + resolution) ───────────────────

@@ -195,10 +195,11 @@ export function renderFrame(state: DuelState): void {
 
   // Status
   let statusText = state.status;
-  if (state.phase === "outcome" && state.game?.winner && state.game.winner !== "draw") {
+  const seriesOver = state.market?.resolved;
+  if (!seriesOver && state.phase === "outcome" && state.game?.winner && state.game.winner !== "draw") {
     const winColor = state.game.winner === "X" ? cyan : red;
     statusText = `${winColor(bold(state.game.winner))} ${boldGreen("WINS!")}`;
-  } else if (state.phase === "outcome" && state.game?.winner === "draw") {
+  } else if (!seriesOver && state.phase === "outcome" && state.game?.winner === "draw") {
     statusText = yellow(bold("DRAW — game does not count"));
   }
   lines.push(line(center(statusText, W)));
