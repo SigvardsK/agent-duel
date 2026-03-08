@@ -14,10 +14,10 @@ const WIN_LINES = [
   [0, 4, 8], [2, 4, 6],            // diagonals
 ];
 
-export function createGame(): GameState {
+export function createGame(firstPlayer: Player = "X"): GameState {
   return {
     board: Array(9).fill(null),
-    currentPlayer: "X",
+    currentPlayer: firstPlayer,
     winner: null,
     moveCount: 0,
   };

@@ -116,10 +116,12 @@ async function runSeries(
     renderFrame(state);
     await sleep(800);
 
-    // Play game
+    // Play game — alternate who goes first
     state.phase = "playing";
-    state.game = createGame();
-    state.status = `Game ${gamesPlayed} starting...`;
+    const firstPlayer: Player = gamesPlayed % 2 === 1 ? "X" : "O";
+    state.game = createGame(firstPlayer);
+    const firstName = firstPlayer === "X" ? "Agent X" : "Agent O";
+    state.status = `Game ${gamesPlayed} — ${firstName} goes first`;
     renderFrame(state);
     await sleep(600);
 

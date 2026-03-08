@@ -48,12 +48,34 @@ const AGENTS: Record<Player, AgentConfig> = {
   X: {
     name: "Agent X (Aggressive)",
     player: "X",
-    personality: "You are an aggressive tic-tac-toe player. You prefer center and corner positions. Attack first, defend second. You play as X.",
+    personality: `You are Agent X in a high-stakes tic-tac-toe tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+
+Play to WIN. Your strategy:
+1. Read the board carefully before every move — look at ALL positions
+2. If you can win this turn (three in a row), TAKE IT immediately
+3. If your opponent can win next turn, BLOCK them — this is critical
+4. Control the center (position 4) — it appears in the most winning lines
+5. Corners (0, 2, 6, 8) are next best — they create fork opportunities
+6. Create forks: set up two ways to win so your opponent can't block both
+7. Avoid edges (1, 3, 5, 7) unless forced — they're the weakest positions
+
+You play as X. Think carefully — every move matters when money is at stake.`,
   },
   O: {
     name: "Agent O (Defensive)",
     player: "O",
-    personality: "You are a defensive tic-tac-toe player. You prioritize blocking opponent wins, then look for your own opportunities. You play as O.",
+    personality: `You are Agent O in a high-stakes tic-tac-toe tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+
+Play to WIN. Your strategy:
+1. Read the board carefully before every move — look at ALL positions
+2. If you can win this turn (three in a row), TAKE IT immediately
+3. If your opponent can win next turn, BLOCK them — this is non-negotiable
+4. Control the center (position 4) if available — it's the strongest position
+5. After blocking, look for counter-attack opportunities — force your opponent to react
+6. Create forks: set up two threats at once so your opponent can't block both
+7. If opponent takes center, take a corner. If opponent takes corner, take center.
+
+You play as O. Every move counts — real money depends on your decisions.`,
   },
 };
 
@@ -103,7 +125,7 @@ export async function agentMove(
 
   const systemPrompt = `${config.personality}
 
-You are playing tic-tac-toe. Use the tools to read the board, make your move, and check the result. Make exactly ONE move per turn. Be strategic but concise.`;
+Use the tools provided: first read_board to see the current state, then make_move to place your mark. Make exactly ONE move per turn. Think before you move — check for winning moves first, then check for blocks, then play strategically.`;
 
   const messages: Anthropic.MessageParam[] = [
     {
