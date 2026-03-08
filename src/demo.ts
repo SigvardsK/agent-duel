@@ -91,7 +91,7 @@ async function runSeries(
   connection: Connection,
   walletX: Wallet,
   walletO: Wallet,
-): Promise<Player> {
+): Promise<Player | "draw"> {
   state.series = { scoreX: 0, scoreO: 0, gameNumber: 0 };
   let gamesPlayed = 0;
 
@@ -175,7 +175,9 @@ async function runSeries(
     await sleep(2000);
   }
 
-  return state.series.scoreX >= WINS_NEEDED ? "X" : "O";
+  if (state.series.scoreX >= WINS_NEEDED) return "X";
+  if (state.series.scoreO >= WINS_NEEDED) return "O";
+  return "draw";
 }
 
 // ─── Round (betting + series + resolution) ───────────────────
@@ -194,10 +196,31 @@ async function runRound(
 
   // Series
   const seriesWinner = await runSeries(state, connection, walletX, walletO);
+
+  state.phase = "outcome";
+
+  if (seriesWinner === "draw") {
+    // All games drawn — no winner, refund all bets
+    state.status = "Series drawn — all games tied!";
+    renderFrame(state);
+    await sleep(2500);
+
+    if (market.bets.length > 0) {
+      // Show refund: mark market resolved with zero-profit payouts
+      const refundPayouts: Payout[] = market.bets.map(b => ({
+        name: b.name, amount: b.amount, profit: 0, side: b.side,
+      }));
+      state.market = { ...market, resolved: true, payouts: refundPayouts };
+      state.status = "All predictions refunded — no winner";
+      renderFrame(state);
+      await sleep(2500);
+    }
+    return;
+  }
+
   const seriesWinnerName = seriesWinner === "X" ? "Agent X" : "Agent O";
   const winColor = colorPlayer(seriesWinner);
 
-  state.phase = "outcome";
   state.status = `${winColor(seriesWinnerName)} wins the series!`;
   renderFrame(state);
   await sleep(2500);
