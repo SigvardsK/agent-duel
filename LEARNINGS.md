@@ -160,3 +160,7 @@ Assessment predicted 2-3 days for a minimal wallet spike. We built the wallet sp
 - Build the visual demo first — it makes debugging and iteration much more engaging
 - Plan the "go again?" round loop from the start rather than bolting it on
 - The prediction market should be designed alongside the series loop, not after — they interact at the draw/resolution boundary
+
+---
+
+> **Note:** Structured learning record at `.claude/learning-records/LR-2026-001-day1-spike.md`
