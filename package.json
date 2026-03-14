@@ -8,6 +8,8 @@
     "game-test": "tsx src/main.ts --level 2",
     "agents": "tsx src/main.ts --level 3",
     "demo": "tsx src/demo.ts",
+    "demo:auto": "tsx src/demo.ts --auto --rounds 50",
+    "demo:auto:short": "tsx src/demo.ts --auto --rounds 5",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },

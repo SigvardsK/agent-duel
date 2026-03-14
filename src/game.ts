@@ -1,22 +1,25 @@
 export type Cell = "X" | "O" | null;
 export type Player = "X" | "O";
 
+export const ROWS = 6;
+export const COLS = 7;
+export const WIN_LENGTH = 4;
+
 export interface GameState {
-  board: Cell[];
+  board: Cell[][]; // board[row][col], row 0 = top
   currentPlayer: Player;
   winner: Player | "draw" | null;
   moveCount: number;
+  lastMove?: { row: number; col: number };
 }
 
-const WIN_LINES = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-  [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
-  [0, 4, 8], [2, 4, 6],            // diagonals
-];
-
 export function createGame(firstPlayer: Player = "X"): GameState {
+  const board: Cell[][] = [];
+  for (let r = 0; r < ROWS; r++) {
+    board.push(Array(COLS).fill(null));
+  }
   return {
-    board: Array(9).fill(null),
+    board,
     currentPlayer: firstPlayer,
     winner: null,
     moveCount: 0,
@@ -25,52 +28,89 @@ export function createGame(firstPlayer: Player = "X"): GameState {
 
 export function getValidMoves(state: GameState): number[] {
   if (state.winner !== null) return [];
-  return state.board
-    .map((cell, i) => (cell === null ? i : -1))
-    .filter((i) => i !== -1);
+  const moves: number[] = [];
+  for (let c = 0; c < COLS; c++) {
+    if (state.board[0][c] === null) moves.push(c);
+  }
+  return moves;
 }
 
-export function makeMove(state: GameState, position: number): GameState {
+export function dropPiece(state: GameState, col: number): GameState {
   if (state.winner !== null) throw new Error("Game is already over");
-  if (position < 0 || position > 8) throw new Error(`Invalid position: ${position}`);
-  if (state.board[position] !== null) throw new Error(`Position ${position} is occupied`);
+  if (col < 0 || col >= COLS) throw new Error(`Invalid column: ${col}`);
+  if (state.board[0][col] !== null) throw new Error(`Column ${col} is full`);
 
-  const newBoard = [...state.board];
-  newBoard[position] = state.currentPlayer;
+  // Find lowest empty row in this column
+  let targetRow = -1;
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (state.board[r][col] === null) {
+      targetRow = r;
+      break;
+    }
+  }
 
-  const winner = checkWinner(newBoard, state.currentPlayer, state.moveCount + 1);
+  // Clone board
+  const newBoard = state.board.map(row => [...row]);
+  newBoard[targetRow][col] = state.currentPlayer;
+
+  const moveCount = state.moveCount + 1;
+  const winner = checkWinner(newBoard, state.currentPlayer, targetRow, col, moveCount);
 
   return {
     board: newBoard,
     currentPlayer: state.currentPlayer === "X" ? "O" : "X",
     winner,
-    moveCount: state.moveCount + 1,
+    moveCount,
+    lastMove: { row: targetRow, col },
   };
 }
 
+// Check from the last placed piece outward in all 4 directions
 function checkWinner(
-  board: Cell[],
-  lastPlayer: Player,
-  moveCount: number
+  board: Cell[][],
+  player: Player,
+  row: number,
+  col: number,
+  moveCount: number,
 ): Player | "draw" | null {
-  for (const [a, b, c] of WIN_LINES) {
-    if (board[a] === lastPlayer && board[b] === lastPlayer && board[c] === lastPlayer) {
-      return lastPlayer;
+  const directions = [
+    [0, 1],  // horizontal
+    [1, 0],  // vertical
+    [1, 1],  // diagonal down-right
+    [1, -1], // diagonal down-left
+  ];
+
+  for (const [dr, dc] of directions) {
+    let count = 1;
+    // Count forward
+    for (let i = 1; i < WIN_LENGTH; i++) {
+      const r = row + dr * i;
+      const c = col + dc * i;
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== player) break;
+      count++;
     }
+    // Count backward
+    for (let i = 1; i < WIN_LENGTH; i++) {
+      const r = row - dr * i;
+      const c = col - dc * i;
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== player) break;
+      count++;
+    }
+    if (count >= WIN_LENGTH) return player;
   }
-  if (moveCount === 9) return "draw";
+
+  if (moveCount === ROWS * COLS) return "draw";
   return null;
 }
 
 export function renderBoard(state: GameState): string {
-  const display = state.board.map((cell, i) => cell ?? String(i));
-  const lines = [
-    ` ${display[0]} | ${display[1]} | ${display[2]} `,
-    `---+---+---`,
-    ` ${display[3]} | ${display[4]} | ${display[5]} `,
-    `---+---+---`,
-    ` ${display[6]} | ${display[7]} | ${display[8]} `,
-  ];
+  const lines: string[] = [];
+  const colNums = Array.from({ length: COLS }, (_, i) => ` ${i} `).join("");
+  lines.push(colNums);
+  for (let r = 0; r < ROWS; r++) {
+    const row = state.board[r].map(cell => cell ?? ".").map(c => ` ${c} `).join("");
+    lines.push(row);
+  }
   return lines.join("\n");
 }
 

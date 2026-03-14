@@ -1,12 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { GameState, Player, getValidMoves, makeMove, renderBoard, gameStatusText } from "./game.js";
+import { GameState, Player, getValidMoves, dropPiece, renderBoard, gameStatusText } from "./game.js";
 
 const client = new Anthropic();
 
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "read_board",
-    description: "Read the current tic-tac-toe board state. Returns ASCII board and game status.",
+    description: "Read the current Connect Four board state. Returns the board grid and game status.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -14,17 +14,17 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: "make_move",
-    description: "Place your mark on the board at a position (0-8). Positions: 0=top-left, 1=top-center, 2=top-right, 3=mid-left, 4=center, 5=mid-right, 6=bot-left, 7=bot-center, 8=bot-right.",
+    name: "drop_piece",
+    description: "Drop your piece into a column (0-6). The piece falls to the lowest empty row. Column 0 is leftmost, column 6 is rightmost.",
     input_schema: {
       type: "object" as const,
       properties: {
-        position: {
+        column: {
           type: "number",
-          description: "Board position 0-8",
+          description: "Column number 0-6",
         },
       },
-      required: ["position"],
+      required: ["column"],
     },
   },
   {
@@ -48,32 +48,34 @@ const AGENTS: Record<Player, AgentConfig> = {
   X: {
     name: "Agent X (Aggressive)",
     player: "X",
-    personality: `You are Agent X in a high-stakes tic-tac-toe tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+    personality: `You are Agent X in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
 
 Play to WIN. Your strategy:
-1. Read the board carefully before every move — look at ALL positions
-2. If you can win this turn (three in a row), TAKE IT immediately
+1. Read the board carefully before every move
+2. If you can win this turn (four in a row), TAKE IT immediately
 3. If your opponent can win next turn, BLOCK them — this is critical
-4. Control the center (position 4) — it appears in the most winning lines
-5. Corners (0, 2, 6, 8) are next best — they create fork opportunities
-6. Create forks: set up two ways to win so your opponent can't block both
-7. Avoid edges (1, 3, 5, 7) unless forced — they're the weakest positions
+4. Control the center column (column 3) — it creates the most connections
+5. Build vertical and diagonal threats — they're harder for opponents to see
+6. Set up double threats: two ways to get four in a row so your opponent can't block both
+7. Avoid playing into positions that give your opponent a winning setup above
+8. Think ahead: a piece you place creates a landing spot for future pieces above it
 
 You play as X. Think carefully — every move matters when money is at stake.`,
   },
   O: {
     name: "Agent O (Defensive)",
     player: "O",
-    personality: `You are Agent O in a high-stakes tic-tac-toe tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+    personality: `You are Agent O in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
 
 Play to WIN. Your strategy:
-1. Read the board carefully before every move — look at ALL positions
-2. If you can win this turn (three in a row), TAKE IT immediately
+1. Read the board carefully before every move
+2. If you can win this turn (four in a row), TAKE IT immediately
 3. If your opponent can win next turn, BLOCK them — this is non-negotiable
-4. Control the center (position 4) if available — it's the strongest position
+4. Control the center column (column 3) if available — it's the strongest position
 5. After blocking, look for counter-attack opportunities — force your opponent to react
-6. Create forks: set up two threats at once so your opponent can't block both
-7. If opponent takes center, take a corner. If opponent takes corner, take center.
+6. Create diagonal threats — they're the hardest to spot and defend
+7. Watch for trap setups: if dropping in one column gives the opponent a win above, avoid it
+8. Build horizontal threats across the bottom rows — they're stable and hard to block
 
 You play as O. Every move counts — real money depends on your decisions.`,
   },
@@ -87,18 +89,18 @@ function executeTool(
   switch (toolName) {
     case "read_board":
       return {
-        result: `${renderBoard(state)}\n\n${gameStatusText(state)}\nValid moves: ${getValidMoves(state).join(", ")}`,
+        result: `${renderBoard(state)}\n\n${gameStatusText(state)}\nValid columns: ${getValidMoves(state).join(", ")}`,
       };
-    case "make_move": {
-      const position = _input.position as number;
+    case "drop_piece": {
+      const column = _input.column as number;
       try {
-        const newState = makeMove(state, position);
+        const newState = dropPiece(state, column);
         return {
-          result: `Move placed at position ${position}.\n\n${renderBoard(newState)}\n\n${gameStatusText(newState)}`,
+          result: `Piece dropped in column ${column}.\n\n${renderBoard(newState)}\n\n${gameStatusText(newState)}`,
           newState,
         };
       } catch (err) {
-        return { result: `Invalid move: ${(err as Error).message}. Valid moves: ${getValidMoves(state).join(", ")}` };
+        return { result: `Invalid move: ${(err as Error).message}. Valid columns: ${getValidMoves(state).join(", ")}` };
       }
     }
     case "check_game_status":
@@ -112,9 +114,9 @@ function executeTool(
 
 function pickRandomMove(state: GameState): GameState {
   const valid = getValidMoves(state);
-  const pos = valid[Math.floor(Math.random() * valid.length)];
-  console.log(`  [fallback] Random move at position ${pos}`);
-  return makeMove(state, pos);
+  const col = valid[Math.floor(Math.random() * valid.length)];
+  console.log(`  [fallback] Random move in column ${col}`);
+  return dropPiece(state, col);
 }
 
 export async function agentMove(
@@ -125,7 +127,7 @@ export async function agentMove(
 
   const systemPrompt = `${config.personality}
 
-Use the tools provided: first read_board to see the current state, then make_move to place your mark. Make exactly ONE move per turn. Think before you move — check for winning moves first, then check for blocks, then play strategically.`;
+Use the tools provided: first read_board to see the current state, then drop_piece to place your piece. Make exactly ONE move per turn. Think before you move — check for winning moves first, then check for blocks, then play strategically.`;
 
   const messages: Anthropic.MessageParam[] = [
     {
@@ -179,7 +181,7 @@ Use the tools provided: first read_board to see the current state, then make_mov
 
       if (newState) {
         currentState = newState;
-        console.log(`  [${config.name}] placed at position ${(toolBlock.input as any).position}`);
+        console.log(`  [${config.name}] dropped in column ${(toolBlock.input as any).column}`);
       }
 
       toolResults.push({

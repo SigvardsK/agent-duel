@@ -2,7 +2,7 @@ import { Connection } from "@solana/web3.js";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
 import { createWallet, fundWallet, transferSOL, printBalances } from "./wallet.js";
-import { createGame, makeMove, renderBoard, gameStatusText, getValidMoves } from "./game.js";
+import { createGame, dropPiece, renderBoard, gameStatusText, getValidMoves } from "./game.js";
 import { settleGame, SettlementConfig } from "./settlement.js";
 import { agentMove } from "./agents.js";
 
@@ -53,12 +53,12 @@ async function runLevel2() {
   await fundWallet(connection, walletO, 2);
 
   let state = createGame();
-  // Hardcoded game: X wins with top row
-  const moves = [0, 3, 1, 4, 2]; // X:0, O:3, X:1, O:4, X:2 → X wins
+  // Hardcoded game: X wins with 4 in bottom row
+  const moves = [0, 0, 1, 1, 2, 2, 3]; // X:col0, O:col0, X:col1, O:col1, X:col2, O:col2, X:col3 → X wins
 
-  for (const pos of moves) {
-    console.log(`${state.currentPlayer} plays position ${pos}`);
-    state = makeMove(state, pos);
+  for (const col of moves) {
+    console.log(`${state.currentPlayer} drops in column ${col}`);
+    state = dropPiece(state, col);
     console.log(renderBoard(state));
     console.log(gameStatusText(state));
     console.log();

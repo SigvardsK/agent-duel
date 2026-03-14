@@ -43,14 +43,25 @@ export function getOdds(market: Market): { x: number; o: number } {
   };
 }
 
-export function resolveMarket(market: Market, winner: Player): { market: Market; payouts: Payout[] } {
+export const DEFAULT_RAKE_RATE = 0.05; // 5% house cut
+
+export interface Resolution {
+  market: Market;
+  payouts: Payout[];
+  houseTake: number;
+}
+
+export function resolveMarket(market: Market, winner: Player, rakeRate: number = DEFAULT_RAKE_RATE): Resolution {
+  const houseTake = market.pool * rakeRate;
+  const effectivePool = market.pool - houseTake;
+
   const winningBets = market.bets.filter(b => b.side === winner);
   const winningTotal = winningBets.reduce((s, b) => s + b.amount, 0);
 
   const payouts: Payout[] = market.bets.map(bet => {
     if (bet.side === winner && winningTotal > 0) {
       const share = bet.amount / winningTotal;
-      const payout = share * market.pool;
+      const payout = share * effectivePool;
       return { name: bet.name, amount: payout, profit: payout - bet.amount, side: bet.side };
     }
     return { name: bet.name, amount: 0, profit: -bet.amount, side: bet.side };
@@ -59,5 +70,6 @@ export function resolveMarket(market: Market, winner: Player): { market: Market;
   return {
     market: { ...market, resolved: true },
     payouts,
+    houseTake,
   };
 }

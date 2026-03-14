@@ -163,4 +163,63 @@ Assessment predicted 2-3 days for a minimal wallet spike. We built the wallet sp
 
 ---
 
+---
+
+## Phase 2 — Connect Four + House Cut + Continuous Loop (2026-03-14)
+
+### What Changed
+
+| Component | Before | After |
+|-----------|--------|-------|
+| Game | Tic-tac-toe (3x3, 5-9 moves) | Connect Four (6x7, 20-40 moves) |
+| Market | Zero rake, full pool to winners | 5% house rake, effective pool to winners |
+| Demo loop | One-shot + "go again?" | Continuous loop with `--rounds` + `--auto` |
+| Failsafes | None (manual Ctrl+C) | Max rounds (default 50) + balance floor (0.6 SOL) |
+| Agent tools | `make_move(position: 0-8)` | `drop_piece(column: 0-6)` |
+| Tests | 39 (24 game + 15 market) | 42 (25 game + 17 market) |
+
+### Why Connect Four?
+
+Tic-tac-toe is wrong for a public demo:
+- **Solved game** — optimal play always draws, no drama
+- **5-9 moves** — over in seconds, no narrative arc
+- **No suspense** — experienced viewers predict outcomes immediately
+
+Connect Four fixes all three:
+- **Unsolved at LLM level** — Haiku 4.5 plays decently but makes exploitable mistakes = tension
+- **20-40 moves** — games last 1-3 minutes, perfect for spectating/betting
+- **Traps and double threats** — real drama, comebacks, blunders
+
+The game swap took ~30 minutes. The architecture was already game-agnostic — only `game.ts` and `agents.ts` needed substantive changes. `renderer.ts` adapted to 6x7 grid. Market, settlement, and demo orchestrator were game-agnostic.
+
+### House Cut (Rake)
+
+Added 5% pool rake to `resolveMarket()`. One parameter change + 3 lines of logic:
+```
+effectivePool = pool * (1 - rakeRate)
+houseTake = pool * rakeRate
+payout = (your_bet / winning_side_total) * effectivePool
+```
+
+Conservation property verified by tests: `sum(profits) + houseTake = 0`. Money is neither created nor destroyed.
+
+### Continuous Loop Architecture
+
+Two modes:
+- **Interactive** (`npm run demo`): user bets, "go again?" between rounds
+- **Autonomous** (`npm run demo:auto`): AI spectators only, auto-loops, auto-refunds low wallets
+
+Failsafes:
+- `--rounds N` (default 50) — hard cap on series count
+- Balance floor (0.6 SOL) — can't afford stake + fees → stop (interactive) or airdrop (auto)
+- Ctrl+C always works, cursor restored cleanly
+
+### Key Insight: Game-Agnostic Architecture Pays Off
+
+The Day 1 architecture decision to keep game logic pure and separate from settlement/market/rendering proved its value. Swapping tic-tac-toe for Connect Four touched 3 files. The market, settlement, renderer, and demo orchestrator didn't care what game was being played — they only care about winner/draw/in-progress.
+
+**Lesson for future game additions:** Any turn-based game that produces a `GameState` with `winner: Player | "draw" | null` and `getValidMoves()` can plug into the existing infrastructure with zero changes to the outer layers.
+
+---
+
 > **Note:** Structured learning record at `.claude/learning-records/LR-2026-001-day1-spike.md`

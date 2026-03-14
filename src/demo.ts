@@ -4,7 +4,7 @@ import { stdin, stdout } from "node:process";
 import { createWallet, fundWallet, getBalance, transferSOL, Wallet } from "./wallet.js";
 import { createGame, Player } from "./game.js";
 import { agentMove } from "./agents.js";
-import { createMarket, placeBet, resolveMarket, Market, Payout } from "./market.js";
+import { createMarket, placeBet, resolveMarket, Market, Payout, DEFAULT_RAKE_RATE } from "./market.js";
 import {
   DuelState, renderFrame, cleanup, sleep, startThinking,
   getFrameHeight, colorPlayer,
@@ -14,6 +14,24 @@ const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
 const STAKE = 0.5;
 const WINS_NEEDED = 2;
 const MAX_GAMES = 5;
+const MIN_BALANCE = 0.6; // SOL — stop if either wallet drops below this (can't afford stake + fees)
+const DEFAULT_MAX_ROUNDS = 50;
+
+function parseArgs(): { maxRounds: number; auto: boolean } {
+  const args = process.argv.slice(2);
+  let maxRounds = DEFAULT_MAX_ROUNDS;
+  let auto = false;
+
+  const roundsIdx = args.indexOf("--rounds");
+  if (roundsIdx !== -1 && args[roundsIdx + 1]) {
+    maxRounds = parseInt(args[roundsIdx + 1], 10) || DEFAULT_MAX_ROUNDS;
+  }
+  if (args.includes("--auto")) {
+    auto = true; // Skip user betting prompts, run fully autonomous
+  }
+
+  return { maxRounds, auto };
+}
 
 // Suppress module console.logs — we own the display
 const _log = console.log;
@@ -35,7 +53,7 @@ async function promptUser(state: DuelState, question: string): Promise<string> {
 
 // ─── Betting Phase ───────────────────────────────────────────
 
-async function runBettingPhase(state: DuelState): Promise<Market> {
+async function runBettingPhase(state: DuelState, auto: boolean): Promise<Market> {
   state.phase = "betting";
   state.status = "Opening prediction market...";
 
@@ -58,6 +76,15 @@ async function runBettingPhase(state: DuelState): Promise<Market> {
   state.status = `Bear bets ${bearAmount} SOL on ${bearSide}`;
   renderFrame(state);
   await sleep(1000);
+
+  if (auto) {
+    // Auto mode: skip user prompt
+    state.status = "AI spectators placed — game starting...";
+    state.market = market;
+    renderFrame(state);
+    await sleep(1200);
+    return market;
+  }
 
   // User bet
   state.status = "Your turn to predict...";
@@ -193,11 +220,12 @@ async function runRound(
   walletX: Wallet,
   walletO: Wallet,
   roundNum: number,
+  auto: boolean = false,
 ): Promise<void> {
   state.round = roundNum;
 
   // Betting
-  const market = await runBettingPhase(state);
+  const market = await runBettingPhase(state, auto);
 
   // Series
   const seriesWinner = await runSeries(state, connection, walletX, walletO);
@@ -237,8 +265,8 @@ async function runRound(
     renderFrame(state);
     await sleep(1500);
 
-    const { payouts } = resolveMarket(market, seriesWinner);
-    state.market = { ...market, resolved: true, payouts };
+    const { payouts, houseTake } = resolveMarket(market, seriesWinner);
+    state.market = { ...market, resolved: true, payouts, houseTake };
 
     state.status = "Prediction payouts:";
     renderFrame(state);
@@ -256,6 +284,7 @@ async function runRound(
 // ─── Main Flow ───────────────────────────────────────────────
 
 async function run() {
+  const { maxRounds, auto } = parseArgs();
   const connection = new Connection(RPC_URL, "confirmed");
 
   const state: DuelState = {
@@ -299,32 +328,75 @@ async function run() {
   renderFrame(state);
   await sleep(800);
 
-  // ─── Round 1 ───────────────────────────────────────
-  await runRound(state, connection, walletX, walletO, 1);
+  // ─── Game Loop ─────────────────────────────────────
+  let round = 0;
 
-  // ─── Ask: go again? ───────────────────────────────
-  state.status = "Play again?";
-  renderFrame(state);
-  const again = await promptUser(state, "Go again with current balances? [Y/n]");
+  while (round < maxRounds) {
+    round++;
 
-  if (again.toLowerCase() !== "n") {
-    // Reset series and market for round 2
-    state.market = undefined;
-    state.game = undefined;
-    state.pot = 0;
+    await runRound(state, connection, walletX, walletO, round, auto);
 
-    // Refresh balances from chain
-    state.walletX!.balance = await getBalance(connection, walletX);
-    state.walletO!.balance = await getBalance(connection, walletO);
+    // ─── Balance floor check ─────────────────────────
+    const balX = await getBalance(connection, walletX);
+    const balO = await getBalance(connection, walletO);
+    state.walletX!.balance = balX;
+    state.walletO!.balance = balO;
 
-    await runRound(state, connection, walletX, walletO, 2);
+    if (balX < MIN_BALANCE || balO < MIN_BALANCE) {
+      if (auto) {
+        // Auto mode: top up and continue
+        state.status = "Low balance — requesting airdrop...";
+        renderFrame(state);
+        if (balX < MIN_BALANCE) {
+          await fundWallet(connection, walletX, 2);
+          state.walletX!.balance = await getBalance(connection, walletX);
+        }
+        if (balO < MIN_BALANCE) {
+          await fundWallet(connection, walletO, 2);
+          state.walletO!.balance = await getBalance(connection, walletO);
+        }
+        state.status = "Wallets topped up";
+        renderFrame(state);
+        await sleep(1000);
+      } else {
+        // Interactive mode: warn and stop
+        state.status = `Balance too low to continue (X: ${balX.toFixed(2)}, O: ${balO.toFixed(2)})`;
+        renderFrame(state);
+        await sleep(3000);
+        break;
+      }
+    }
+
+    // ─── Next round or stop ──────────────────────────
+    if (auto) {
+      // Reset for next round
+      state.market = undefined;
+      state.game = undefined;
+      state.pot = 0;
+      state.status = `Round ${round} complete — next round in 5s...`;
+      renderFrame(state);
+      await sleep(5000);
+    } else {
+      // Ask user
+      state.status = `Round ${round}/${maxRounds} complete`;
+      renderFrame(state);
+      const again = await promptUser(state, "Go again? [Y/n]");
+
+      if (again.toLowerCase() === "n") break;
+
+      state.market = undefined;
+      state.game = undefined;
+      state.pot = 0;
+    }
   }
 
   // ─── Final ─────────────────────────────────────────
   state.walletX!.balance = await getBalance(connection, walletX);
   state.walletO!.balance = await getBalance(connection, walletO);
   state.phase = "done";
-  state.status = "Thanks for watching!";
+  state.status = round >= maxRounds
+    ? `All ${maxRounds} rounds complete — thanks for watching!`
+    : "Thanks for watching!";
   state.market = undefined;
   renderFrame(state);
   await sleep(4000);

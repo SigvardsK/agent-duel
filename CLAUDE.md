@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-Two Claude AI agents play tic-tac-toe in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market. Visual ANSI terminal demo.
+Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market with 5% house rake. Visual ANSI terminal demo.
 
-**Status:** Demo complete (2026-03-08, ~5 hours). Builder team established for next phase.
-**Priority:** Deferred — build when capacity allows.
+**Status:** Phase 2 complete — Connect Four + house cut + continuous loop. Next: Phase 3 (web UI + WebSocket streaming).
+**Priority:** Build in gaps between P0 work.
 
 ## Stack
 
@@ -18,11 +18,11 @@ Two Claude AI agents play tic-tac-toe in a best-of-3 series, staking SOL on each
 
 ## Architecture
 
-- **Off-chain game** — pure TypeScript state machine, no smart contracts (yet)
+- **Off-chain game** — pure TypeScript state machine (Connect Four, 6x7 grid), no smart contracts (yet)
 - **Direct transfers** — SystemProgram.transfer, no escrow (yet)
-- **Claude agents** — Haiku 4.5, temperature 0, 3 tools (read_board, make_move, check_game_status)
+- **Claude agents** — Haiku 4.5, temperature 0, 3 tools (read_board, drop_piece, check_game_status)
 - **Best-of-3 series** — first to 2 wins, max 5 games, draws don't count, alternating first player
-- **Parimutuel prediction market** — off-chain, pure functions, AI spectators + user bets
+- **Parimutuel prediction market** — off-chain, pure functions, AI spectators + user bets, 5% house rake
 - **Visual TUI** — ANSI colors, box drawing, in-place redraws, animated thinking indicator
 
 ---
@@ -171,7 +171,7 @@ Reject handoffs that lack:
 
 ## Key Files
 
-- `src/game.ts` — Tic-tac-toe state machine (pure, immutable)
+- `src/game.ts` — Connect Four state machine (6x7, gravity drops, pure, immutable)
 - `src/wallet.ts` — Keypair gen, airdrop, transfer, balance
 - `src/agents.ts` — Claude tool-use agent wrappers with stakes-aware prompts
 - `src/market.ts` — Parimutuel prediction market (pure functions)
@@ -191,15 +191,20 @@ solana-test-validator --quiet --reset &
 
 # Visual demo (recommended)
 export ANTHROPIC_API_KEY="sk-ant-..."
-npm run demo
+npm run demo                # Interactive (user bets, asks "go again?")
+npm run demo:auto           # Autonomous (50 rounds, no user input)
+npm run demo:auto:short     # Quick test (5 rounds)
+
+# CLI flags
+tsx src/demo.ts --auto --rounds 10   # Custom round count
 
 # Developer levels
 npm run wallet-test    # L1: wallet infrastructure
-npm run game-test      # L2: game + settlement
+npm run game-test      # L2: game + settlement (Connect Four)
 npm run agents         # L3: single-game agent duel
 
 # Tests
-npx vitest run         # Run all tests
+npx vitest run         # Run all tests (42 tests)
 npx vitest --watch     # Watch mode
 ```
 

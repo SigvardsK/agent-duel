@@ -1,4 +1,4 @@
-import { GameState, Cell, Player } from "./game.js";
+import { GameState, Cell, Player, ROWS, COLS } from "./game.js";
 import { Market, Payout, getOdds } from "./market.js";
 
 // ─── ANSI Helpers ────────────────────────────────────────────
@@ -15,6 +15,7 @@ const CYAN = `${ESC}[36m`;
 const RED = `${ESC}[31m`;
 const YELLOW = `${ESC}[33m`;
 const GREEN = `${ESC}[32m`;
+const MAGENTA = `${ESC}[35m`;
 
 const cyan = (s: string) => `${CYAN}${s}${RESET}`;
 const red = (s: string) => `${RED}${s}${RESET}`;
@@ -23,15 +24,16 @@ const green = (s: string) => `${GREEN}${s}${RESET}`;
 const bold = (s: string) => `${BOLD}${s}${RESET}`;
 const dim = (s: string) => `${DIM}${s}${RESET}`;
 const boldGreen = (s: string) => `${BOLD}${GREEN}${s}${RESET}`;
+const magenta = (s: string) => `${MAGENTA}${s}${RESET}`;
 
 export function colorPlayer(player: Player): (s: string) => string {
   return player === "X" ? cyan : red;
 }
 
-function colorCell(cell: Cell, index: number): string {
+function colorCell(cell: Cell): string {
   if (cell === "X") return cyan(bold("X"));
   if (cell === "O") return red(bold("O"));
-  return dim(String(index));
+  return dim(".");
 }
 
 function truncKey(pubkey: string): string {
@@ -72,7 +74,7 @@ export interface DuelState {
   pot: number;
   game?: GameState;
   series?: SeriesState;
-  market?: Market & { payouts?: Payout[] };
+  market?: Market & { payouts?: Payout[]; houseTake?: number };
   status: string;
   phase: string;
   round?: number;
@@ -103,7 +105,7 @@ export function renderFrame(state: DuelState): void {
   const roundLabel = state.round && state.round > 1 ? `  Round ${state.round}` : "";
   const title = state.series
     ? `${bold("AGENT DUEL")}  —  Best of 3${roundLabel}`
-    : `${bold("AGENT DUEL")}  —  Solana Stakes`;
+    : `${bold("AGENT DUEL")}  —  Connect Four`;
   lines.push(`  ╔═${BORDER_H}═╗`);
   lines.push(line(center(title, W)));
   lines.push(`  ╠═${BORDER_H}═╣`);
@@ -148,21 +150,28 @@ export function renderFrame(state: DuelState): void {
 
   lines.push(emptyLine());
 
-  // Board
+  // Board — Connect Four 6x7
   if (state.game) {
-    const b = state.game.board;
-    const r = (i: number) => colorCell(b[i], i);
-    lines.push(line(center(`${r(0)} │ ${r(1)} │ ${r(2)}`, W)));
-    lines.push(line(center(`───┼───┼───`, W)));
-    lines.push(line(center(`${r(3)} │ ${r(4)} │ ${r(5)}`, W)));
-    lines.push(line(center(`───┼───┼───`, W)));
-    lines.push(line(center(`${r(6)} │ ${r(7)} │ ${r(8)}`, W)));
+    // Column numbers
+    const colNums = Array.from({ length: COLS }, (_, i) => ` ${dim(String(i))} `).join(" ");
+    lines.push(line(center(colNums, W)));
+
+    // Board rows
+    for (let r = 0; r < ROWS; r++) {
+      const rowCells = state.game.board[r].map(cell => ` ${colorCell(cell)} `).join(dim("│"));
+      lines.push(line(center(rowCells, W)));
+      if (r < ROWS - 1) {
+        const divider = Array.from({ length: COLS }, () => "───").join("┼");
+        lines.push(line(center(dim(divider), W)));
+      }
+    }
+    // Bottom border
+    const bottom = "═".repeat(COLS * 4 - 1);
+    lines.push(line(center(dim(bottom), W)));
   } else {
     lines.push(emptyLine());
     lines.push(line(center(dim("Game board will appear here"), W)));
-    lines.push(emptyLine());
-    lines.push(emptyLine());
-    lines.push(emptyLine());
+    for (let i = 0; i < ROWS; i++) lines.push(emptyLine());
   }
 
   lines.push(emptyLine());
@@ -188,6 +197,13 @@ export function renderFrame(state: DuelState): void {
     }
     const oddsText = `Pool: ${yellow(bold(state.market.pool.toFixed(2) + " SOL"))}  Odds: ${cyan(`X ${odds.x}%`)} ${red(`O ${odds.o}%`)}`;
     lines.push(line(`${dim("│")} ${padRight(oddsText, W - 4)} ${dim("│")}`));
+
+    // House cut display
+    if (state.market.resolved && state.market.houseTake !== undefined && state.market.houseTake > 0) {
+      const houseText = `House: ${magenta(bold(state.market.houseTake.toFixed(3) + " SOL"))} (5% rake)`;
+      lines.push(line(`${dim("│")} ${padRight(houseText, W - 4)} ${dim("│")}`));
+    }
+
     lines.push(line(`${dim("└" + "─".repeat(W - 3) + "┘")}`));
   }
 
@@ -236,10 +252,20 @@ export function startThinking(state: DuelState, agentName: string): () => void {
 export function getFrameHeight(state: DuelState): number {
   let h = 7; // title + wallets
   h += 3; // series/pot + empty
-  h += 5; // board
+  if (state.game) {
+    h += 1; // column numbers
+    h += ROWS; // board rows
+    h += ROWS - 1; // dividers
+    h += 1; // bottom border
+  } else {
+    h += ROWS + 2; // placeholder
+  }
   h += 1; // empty
   if (state.market && state.market.bets.length > 0) {
     h += state.market.bets.length + 3; // panel header + bets + pool + footer
+    if (state.market.resolved && (state.market as any).houseTake > 0) {
+      h += 1; // house cut line
+    }
   }
   h += 3; // empty + status + border
   return h;
