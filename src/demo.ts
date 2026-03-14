@@ -9,6 +9,7 @@ import {
   DuelState, renderFrame, cleanup, sleep, startThinking,
   getFrameHeight, colorPlayer,
 } from "./renderer.js";
+import { createServer, DuelServer } from "./server.js";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
 const STAKE = 0.5;
@@ -16,21 +17,41 @@ const WINS_NEEDED = 2;
 const MAX_GAMES = 5;
 const MIN_BALANCE = 0.6; // SOL — stop if either wallet drops below this (can't afford stake + fees)
 const DEFAULT_MAX_ROUNDS = 50;
+const DEFAULT_WEB_PORT = 8080;
+const WEB_BETTING_WINDOW_SECS = 15;
 
-function parseArgs(): { maxRounds: number; auto: boolean } {
+function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: number } {
   const args = process.argv.slice(2);
   let maxRounds = DEFAULT_MAX_ROUNDS;
   let auto = false;
+  let web = false;
+  let port = DEFAULT_WEB_PORT;
 
   const roundsIdx = args.indexOf("--rounds");
   if (roundsIdx !== -1 && args[roundsIdx + 1]) {
     maxRounds = parseInt(args[roundsIdx + 1], 10) || DEFAULT_MAX_ROUNDS;
   }
+  const portIdx = args.indexOf("--port");
+  if (portIdx !== -1 && args[portIdx + 1]) {
+    port = parseInt(args[portIdx + 1], 10) || DEFAULT_WEB_PORT;
+  }
   if (args.includes("--auto")) {
-    auto = true; // Skip user betting prompts, run fully autonomous
+    auto = true;
+  }
+  if (args.includes("--web")) {
+    web = true;
   }
 
-  return { maxRounds, auto };
+  return { maxRounds, auto, web, port };
+}
+
+// ─── Broadcast-aware render wrapper ─────────────────────────
+
+let server: DuelServer | null = null;
+
+function render(state: DuelState): void {
+  renderFrame(state);
+  server?.broadcast(state);
 }
 
 // Suppress module console.logs — we own the display
@@ -53,6 +74,42 @@ async function promptUser(state: DuelState, question: string): Promise<string> {
 
 // ─── Betting Phase ───────────────────────────────────────────
 
+function sanitizeName(name: string): string {
+  // Strip ANSI escape codes and control characters
+  return name.replace(/\x1b\[[0-9;]*m/g, "").replace(/[\x00-\x1f]/g, "").slice(0, 16) || "Spectator";
+}
+
+async function runWebBettingWindow(state: DuelState, market: Market): Promise<Market> {
+  if (!server) return market;
+
+  let currentMarket = market;
+
+  // Clear any stale handlers from previous rounds
+  server.clearBetHandlers();
+
+  // Register bet handler for web spectators
+  server.onBet((bet: { name: string; side: string; amount: number }) => {
+    if (currentMarket.resolved) return;
+    const side = bet.side as Player;
+    const amount = Math.min(1.0, Math.max(0.01, bet.amount));
+    currentMarket = placeBet(currentMarket, sanitizeName(bet.name), amount, side);
+    state.market = currentMarket;
+    render(state);
+  });
+
+  // Countdown
+  for (let remaining = WEB_BETTING_WINDOW_SECS; remaining > 0; remaining--) {
+    const spectators = server.getSpectatorCount();
+    state.status = `Web betting open — ${remaining}s remaining (${spectators} spectator${spectators !== 1 ? "s" : ""})`;
+    render(state);
+    await sleep(1000);
+  }
+
+  // Clear handlers — betting window closed
+  server.clearBetHandlers();
+  return currentMarket;
+}
+
 async function runBettingPhase(state: DuelState, auto: boolean): Promise<Market> {
   state.phase = "betting";
   state.status = "Opening prediction market...";
@@ -65,7 +122,7 @@ async function runBettingPhase(state: DuelState, auto: boolean): Promise<Market>
   market = placeBet(market, "Bull", bullAmount, bullSide);
   state.market = market;
   state.status = `Bull bets ${bullAmount} SOL on ${bullSide}`;
-  renderFrame(state);
+  render(state);
   await sleep(1000);
 
   // Bear: slight O bias
@@ -74,38 +131,83 @@ async function runBettingPhase(state: DuelState, auto: boolean): Promise<Market>
   market = placeBet(market, "Bear", bearAmount, bearSide);
   state.market = market;
   state.status = `Bear bets ${bearAmount} SOL on ${bearSide}`;
-  renderFrame(state);
+  render(state);
   await sleep(1000);
 
   if (auto) {
-    // Auto mode: skip user prompt
-    state.status = "AI spectators placed — game starting...";
+    // Auto mode: skip user prompt but keep web betting window
+    if (server) {
+      state.status = "AI spectators placed — web betting open...";
+      state.market = market;
+      render(state);
+      market = await runWebBettingWindow(state, market);
+    }
+    state.status = "Betting closed — game starting...";
     state.market = market;
-    renderFrame(state);
+    render(state);
     await sleep(1200);
     return market;
   }
 
-  // User bet
-  state.status = "Your turn to predict...";
-  renderFrame(state);
+  // Interactive: web betting window runs during user prompt
+  if (server) {
+    // Clear stale handlers, start accepting web bets
+    server.clearBetHandlers();
+    let webMarket = market;
+    server.onBet((bet: { name: string; side: string; amount: number }) => {
+      if (webMarket.resolved) return;
+      const side = bet.side as Player;
+      const amount = Math.min(1.0, Math.max(0.01, bet.amount));
+      webMarket = placeBet(webMarket, sanitizeName(bet.name), amount, side);
+      state.market = webMarket;
+      render(state);
+    });
 
-  const userSideRaw = await promptUser(state, "Bet on X or O? (or Enter to skip)");
-  const userSide = userSideRaw.toUpperCase();
+    // User bet (web bets can arrive concurrently)
+    state.status = "Your turn to predict... (web spectators can also bet)";
+    render(state);
 
-  if (userSide === "X" || userSide === "O") {
-    state.status = "How much?";
-    renderFrame(state);
-    const amountStr = await promptUser(state, "Amount in SOL? (0.01-1.00)");
-    const userAmount = Math.min(1.0, Math.max(0.01, parseFloat(amountStr) || 0.1));
-    market = placeBet(market, "You", userAmount, userSide as Player);
-    state.market = market;
-    state.status = `You bet ${userAmount.toFixed(2)} SOL on ${userSide}`;
+    const userSideRaw = await promptUser(state, "Bet on X or O? (or Enter to skip)");
+    const userSide = userSideRaw.toUpperCase();
+
+    // Capture final market state and close handlers
+    market = webMarket;
+    server.clearBetHandlers();
+
+    if (userSide === "X" || userSide === "O") {
+      state.status = "How much?";
+      render(state);
+      const amountStr = await promptUser(state, "Amount in SOL? (0.01-1.00)");
+      const userAmount = Math.min(1.0, Math.max(0.01, parseFloat(amountStr) || 0.1));
+      market = placeBet(market, "You", userAmount, userSide as Player);
+      state.market = market;
+      state.status = `You bet ${userAmount.toFixed(2)} SOL on ${userSide}`;
+    } else {
+      state.status = "Skipping — watching only";
+    }
   } else {
-    state.status = "Skipping — watching only";
+    // No web server — original interactive flow
+    state.status = "Your turn to predict...";
+    render(state);
+
+    const userSideRaw = await promptUser(state, "Bet on X or O? (or Enter to skip)");
+    const userSide = userSideRaw.toUpperCase();
+
+    if (userSide === "X" || userSide === "O") {
+      state.status = "How much?";
+      render(state);
+      const amountStr = await promptUser(state, "Amount in SOL? (0.01-1.00)");
+      const userAmount = Math.min(1.0, Math.max(0.01, parseFloat(amountStr) || 0.1));
+      market = placeBet(market, "You", userAmount, userSide as Player);
+      state.market = market;
+      state.status = `You bet ${userAmount.toFixed(2)} SOL on ${userSide}`;
+    } else {
+      state.status = "Skipping — watching only";
+    }
   }
+
   state.market = market;
-  renderFrame(state);
+  render(state);
   await sleep(1200);
 
   return market;
@@ -129,18 +231,18 @@ async function runSeries(
     // Staking
     state.phase = "staking";
     state.status = `Game ${gamesPlayed} — staking...`;
-    renderFrame(state);
+    render(state);
     await sleep(600);
 
     state.walletX!.balance -= STAKE;
     state.pot += STAKE;
-    renderFrame(state);
+    render(state);
     await sleep(400);
 
     state.walletO!.balance -= STAKE;
     state.pot += STAKE;
     state.status = `Game ${gamesPlayed} — stakes locked`;
-    renderFrame(state);
+    render(state);
     await sleep(800);
 
     // Play game — alternate who goes first
@@ -149,7 +251,7 @@ async function runSeries(
     state.game = createGame(firstPlayer);
     const firstName = firstPlayer === "X" ? "Agent X" : "Agent O";
     state.status = `Game ${gamesPlayed} — ${firstName} goes first`;
-    renderFrame(state);
+    render(state);
     await sleep(600);
 
     while (state.game.winner === null) {
@@ -157,18 +259,18 @@ async function runSeries(
       const agentName = player === "X" ? "Agent X" : "Agent O";
       const moveNum = state.game.moveCount + 1;
 
-      const stopThinking = startThinking(state, `Game ${gamesPlayed} — ${agentName}`);
+      const stopThinking = startThinking(state, `Game ${gamesPlayed} — ${agentName}`, render);
       state.game = await agentMove(state.game);
       stopThinking();
 
       state.status = `Game ${gamesPlayed} — ${agentName} played (move ${moveNum})`;
-      renderFrame(state);
+      render(state);
       await sleep(600);
     }
 
     // Outcome
     state.phase = "outcome";
-    renderFrame(state);
+    render(state);
     await sleep(1500);
 
     if (state.game.winner === "draw") {
@@ -176,7 +278,7 @@ async function runSeries(
       state.walletO!.balance += STAKE;
       state.pot = 0;
       state.status = `Game ${gamesPlayed} drawn — replaying...`;
-      renderFrame(state);
+      render(state);
       await sleep(2000);
       continue;
     }
@@ -185,7 +287,7 @@ async function runSeries(
     const gameWinner = state.game.winner;
     state.phase = "settling";
     state.status = `Settling game ${gamesPlayed}...`;
-    renderFrame(state);
+    render(state);
 
     const loser = gameWinner === "X" ? walletO : walletX;
     const winner = gameWinner === "X" ? walletX : walletO;
@@ -200,7 +302,7 @@ async function runSeries(
 
     const winnerName = gameWinner === "X" ? "Agent X" : "Agent O";
     state.status = `${winnerName} wins game ${gamesPlayed}!`;
-    renderFrame(state);
+    render(state);
     await sleep(2000);
   }
 
@@ -235,7 +337,7 @@ async function runRound(
   if (seriesWinner === "draw") {
     // All games drawn — no winner, refund all bets
     state.status = "Series drawn — all games tied!";
-    renderFrame(state);
+    render(state);
     await sleep(2500);
 
     if (market.bets.length > 0) {
@@ -245,7 +347,7 @@ async function runRound(
       }));
       state.market = { ...market, resolved: true, payouts: refundPayouts };
       state.status = "All predictions refunded — no winner";
-      renderFrame(state);
+      render(state);
       await sleep(2500);
     }
     return;
@@ -255,28 +357,28 @@ async function runRound(
   const winColor = colorPlayer(seriesWinner);
 
   state.status = `${winColor(seriesWinnerName)} wins the series!`;
-  renderFrame(state);
+  render(state);
   await sleep(2500);
 
   // Market resolution
   if (market.bets.length > 0) {
     state.phase = "settling";
     state.status = "Resolving predictions...";
-    renderFrame(state);
+    render(state);
     await sleep(1500);
 
     const { payouts, houseTake } = resolveMarket(market, seriesWinner);
     state.market = { ...market, resolved: true, payouts, houseTake };
 
     state.status = "Prediction payouts:";
-    renderFrame(state);
+    render(state);
     await sleep(2500);
 
     // Show final balances with payouts reflected
     state.walletX!.balance = await getBalance(connection, walletX);
     state.walletO!.balance = await getBalance(connection, walletO);
     state.status = `Round ${roundNum} complete — ${winColor(seriesWinnerName)} is the champion!`;
-    renderFrame(state);
+    render(state);
     await sleep(2500);
   }
 }
@@ -284,19 +386,24 @@ async function runRound(
 // ─── Main Flow ───────────────────────────────────────────────
 
 async function run() {
-  const { maxRounds, auto } = parseArgs();
+  const { maxRounds, auto, web, port } = parseArgs();
   const connection = new Connection(RPC_URL, "confirmed");
+
+  // Start web server if requested
+  if (web) {
+    server = createServer(port);
+  }
 
   const state: DuelState = {
     pot: 0,
-    status: "Initializing...",
+    status: web ? `Initializing... (web UI on port ${port})` : "Initializing...",
     phase: "init",
   };
 
-  process.on("exit", cleanup);
-  process.on("SIGINT", () => { cleanup(); process.exit(0); });
+  process.on("exit", () => { server?.close(); cleanup(); });
+  process.on("SIGINT", () => { server?.close(); cleanup(); process.exit(0); });
 
-  renderFrame(state);
+  render(state);
   await sleep(800);
 
   // Create wallets
@@ -309,23 +416,23 @@ async function run() {
   state.walletX = { name: "Agent X", pubkey: walletX.keypair.publicKey.toBase58(), balance: 0 };
   state.walletO = { name: "Agent O", pubkey: walletO.keypair.publicKey.toBase58(), balance: 0 };
   state.status = "Wallets created";
-  renderFrame(state);
+  render(state);
   await sleep(1000);
 
   // Fund wallets
   state.phase = "funding";
   state.status = "Requesting airdrops...";
-  renderFrame(state);
+  render(state);
 
   await fundWallet(connection, walletX, 2);
   state.walletX.balance = await getBalance(connection, walletX);
-  renderFrame(state);
+  render(state);
   await sleep(400);
 
   await fundWallet(connection, walletO, 2);
   state.walletO.balance = await getBalance(connection, walletO);
   state.status = "Both players funded";
-  renderFrame(state);
+  render(state);
   await sleep(800);
 
   // ─── Game Loop ─────────────────────────────────────
@@ -346,7 +453,7 @@ async function run() {
       if (auto) {
         // Auto mode: top up and continue
         state.status = "Low balance — requesting airdrop...";
-        renderFrame(state);
+        render(state);
         if (balX < MIN_BALANCE) {
           await fundWallet(connection, walletX, 2);
           state.walletX!.balance = await getBalance(connection, walletX);
@@ -356,12 +463,12 @@ async function run() {
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";
-        renderFrame(state);
+        render(state);
         await sleep(1000);
       } else {
         // Interactive mode: warn and stop
         state.status = `Balance too low to continue (X: ${balX.toFixed(2)}, O: ${balO.toFixed(2)})`;
-        renderFrame(state);
+        render(state);
         await sleep(3000);
         break;
       }
@@ -374,12 +481,12 @@ async function run() {
       state.game = undefined;
       state.pot = 0;
       state.status = `Round ${round} complete — next round in 5s...`;
-      renderFrame(state);
+      render(state);
       await sleep(5000);
     } else {
       // Ask user
       state.status = `Round ${round}/${maxRounds} complete`;
-      renderFrame(state);
+      render(state);
       const again = await promptUser(state, "Go again? [Y/n]");
 
       if (again.toLowerCase() === "n") break;
@@ -398,7 +505,7 @@ async function run() {
     ? `All ${maxRounds} rounds complete — thanks for watching!`
     : "Thanks for watching!";
   state.market = undefined;
-  renderFrame(state);
+  render(state);
   await sleep(4000);
 
   cleanup();

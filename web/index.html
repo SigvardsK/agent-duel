@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Duel — Connect Four</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;--fg:#e0e0e0;--border:#333;--dim:#666;
+  --cyan:#00d4ff;--red:#ff4444;--yellow:#ffd700;--green:#00ff88;--magenta:#ff44ff;
+  --font:'JetBrains Mono','Fira Code','Cascadia Code',monospace;
+}
+html,body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;min-height:100vh}
+body{display:flex;justify-content:center;padding:16px 8px}
+body::after{
+  content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px);
+}
+#app{max-width:700px;width:100%}
+
+/* Connection indicator */
+#conn{position:fixed;top:12px;right:12px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+#conn .dot{width:8px;height:8px;border-radius:50%;background:var(--red);transition:background .3s}
+#conn.ok .dot{background:var(--green)}
+
+/* Header */
+.header{border:1px solid var(--border);padding:12px;text-align:center;margin-bottom:12px}
+.header h1{font-size:18px;font-weight:700;letter-spacing:2px}
+.header .sub{font-size:12px;color:var(--dim);margin-top:4px}
+.spectators{font-size:11px;color:var(--dim);margin-top:4px}
+
+/* Wallets */
+.wallets{display:flex;gap:12px;margin-bottom:12px}
+.wallet{flex:1;border:1px solid var(--border);padding:10px;font-size:12px}
+.wallet .name{font-weight:700;font-size:14px;margin-bottom:4px}
+.wallet .bal{color:var(--yellow)}
+.wallet .key{color:var(--dim);font-size:11px}
+.wallet.x .name{color:var(--cyan)}
+.wallet.o .name{color:var(--red)}
+
+/* Series + Pot */
+.score-pot{text-align:center;border:1px solid var(--border);padding:10px;margin-bottom:12px}
+.series-score{font-size:16px;margin-bottom:4px}
+.series-score .sx{color:var(--cyan);font-weight:700}
+.series-score .so{color:var(--red);font-weight:700}
+.pot{font-size:14px}
+.pot .val{color:var(--green);font-weight:700}
+.pot .val.zero{color:var(--dim);font-weight:400}
+.game-num{font-size:12px;color:var(--dim);margin-top:2px}
+
+/* Board */
+.board-wrap{border:1px solid var(--border);padding:12px;margin-bottom:12px;overflow-x:auto}
+.col-nums{display:flex;justify-content:center;gap:0;margin-bottom:6px}
+.col-nums span{width:40px;text-align:center;font-size:12px;color:var(--dim)}
+.board{display:flex;flex-direction:column;align-items:center;gap:0}
+.board-row{display:flex;gap:0}
+.cell{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  border:1px solid #222;border-radius:4px;font-size:20px;font-weight:700;
+  transition:background .3s,box-shadow .3s}
+.cell.X{color:var(--cyan);background:rgba(0,212,255,0.08)}
+.cell.O{color:var(--red);background:rgba(255,68,68,0.08)}
+.cell.empty{color:#222}
+.cell.last{box-shadow:0 0 10px rgba(0,212,255,0.5);border-color:var(--cyan)}
+.cell.last.O{box-shadow:0 0 10px rgba(255,68,68,0.5);border-color:var(--red)}
+.cell.drop{animation:drop .35s ease-in}
+@keyframes drop{0%{transform:translateY(-80px);opacity:0}60%{transform:translateY(4px)}100%{transform:translateY(0);opacity:1}}
+.board-placeholder{text-align:center;padding:40px 0;color:var(--dim);font-size:13px}
+
+/* Status */
+.status{text-align:center;padding:10px;border:1px solid var(--border);margin-bottom:12px;font-size:14px;min-height:40px;display:flex;align-items:center;justify-content:center}
+
+/* Market */
+.market{border:1px solid var(--border);padding:10px;margin-bottom:12px;font-size:12px}
+.market h3{font-size:13px;color:var(--dim);margin-bottom:8px;border-bottom:1px solid #222;padding-bottom:4px}
+.bet-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a}
+.bet-row .side{font-weight:700}
+.bet-row .side.X{color:var(--cyan)}
+.bet-row .side.O{color:var(--red)}
+.bet-row .amt{color:var(--yellow)}
+.bet-row .profit{font-weight:700}
+.bet-row .profit.win{color:var(--green)}
+.bet-row .profit.loss{color:var(--red)}
+.pool-line{margin-top:8px;display:flex;justify-content:space-between}
+.pool-line .pool-val{color:var(--yellow);font-weight:700}
+.odds span.x{color:var(--cyan)}
+.odds span.o{color:var(--red)}
+.house-line{color:var(--magenta);margin-top:4px;font-weight:700}
+
+/* Betting UI */
+.betting{border:1px solid var(--border);padding:12px;margin-bottom:12px}
+.betting h3{font-size:13px;color:var(--dim);margin-bottom:8px}
+.bet-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bet-form input{background:#111;border:1px solid var(--border);color:var(--fg);padding:6px 8px;
+  font-family:var(--font);font-size:12px;border-radius:3px;width:90px}
+.bet-form input:focus{outline:none;border-color:var(--cyan)}
+.bet-form .name-input{width:120px}
+.bet-btn{padding:6px 14px;border:1px solid;font-family:var(--font);font-size:12px;font-weight:700;
+  cursor:pointer;border-radius:3px;background:transparent;transition:background .2s}
+.bet-btn.x{color:var(--cyan);border-color:var(--cyan)}
+.bet-btn.x:hover{background:rgba(0,212,255,0.15)}
+.bet-btn.o{color:var(--red);border-color:var(--red)}
+.bet-btn.o:hover{background:rgba(255,68,68,0.15)}
+.bet-btn:disabled{opacity:0.4;cursor:not-allowed}
+.bet-confirm{color:var(--green);font-size:12px;margin-top:6px;min-height:18px}
+.balance-display{font-size:11px;color:var(--dim);margin-top:6px}
+.balance-display .bal-val{color:var(--yellow)}
+
+@media(max-width:500px){
+  .cell{width:32px;height:32px;font-size:16px}
+  .col-nums span{width:32px;font-size:11px}
+  .wallets{flex-direction:column;gap:6px}
+  .bet-form{flex-direction:column}
+  .bet-form input,.bet-btn{width:100%}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="conn"><span class="dot"></span><span class="label">disconnected</span></div>
+  <div class="header">
+    <h1>AGENT DUEL</h1>
+    <div class="sub">Connect Four — Best of 3</div>
+    <div class="spectators" id="spectators"></div>
+  </div>
+  <div class="wallets" id="wallets">
+    <div class="wallet x"><div class="name">Agent X</div><div class="bal">—</div><div class="key">—</div></div>
+    <div class="wallet o"><div class="name">Agent O</div><div class="bal">—</div><div class="key">—</div></div>
+  </div>
+  <div class="score-pot" id="score-pot">
+    <div class="series-score"><span class="sx">X</span> 0 — 0 <span class="so">O</span></div>
+    <div class="pot">POT: <span class="val zero">0.00 SOL</span></div>
+    <div class="game-num"></div>
+  </div>
+  <div class="board-wrap" id="board-wrap">
+    <div class="board-placeholder">Game board will appear here</div>
+  </div>
+  <div class="status" id="status">Waiting for connection...</div>
+  <div class="market" id="market" style="display:none"></div>
+  <div class="betting" id="betting" style="display:none">
+    <h3>Place Your Bet</h3>
+    <div class="bet-form">
+      <input class="name-input" id="bet-name" type="text" placeholder="Your name" maxlength="16">
+      <input id="bet-amount" type="number" min="0.10" max="5.00" step="0.10" value="1.00">
+      <button class="bet-btn x" id="btn-bet-x">Bet on X</button>
+      <button class="bet-btn o" id="btn-bet-o">Bet on O</button>
+    </div>
+    <div class="bet-confirm" id="bet-confirm"></div>
+    <div class="balance-display">Balance: <span class="bal-val" id="local-balance">10.00</span> play SOL</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Local State
+  var LS_NAME = 'agentduel_name';
+  var LS_BAL = 'agentduel_balance';
+  var localBalance = parseFloat(localStorage.getItem(LS_BAL)) || 10.00;
+  var currentPhase = '';
+  var lastState = null;
+  var prevBoard = null;
+  var ws = null;
+  var reconnectDelay = 500;
+
+  function $(id){ return document.getElementById(id); }
+  var nameInput = $('bet-name');
+  var amtInput = $('bet-amount');
+
+  nameInput.value = localStorage.getItem(LS_NAME) || 'Spectator';
+  nameInput.addEventListener('input', function(){ localStorage.setItem(LS_NAME, nameInput.value); });
+  updateBalanceDisplay();
+
+  // WebSocket
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + location.host);
+
+    ws.onopen = function() {
+      reconnectDelay = 500;
+      $('conn').className = 'ok';
+      $('conn').querySelector('.label').textContent = 'connected';
+      // Reset betting UI on reconnect — phase may still be 'betting'
+      currentPhase = '';
+    };
+
+    ws.onclose = function() {
+      $('conn').className = '';
+      $('conn').querySelector('.label').textContent = 'disconnected';
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 5000);
+    };
+
+    ws.onerror = function(){ ws.close(); };
+
+    ws.onmessage = function(evt) {
+      try {
+        var state = JSON.parse(evt.data);
+        lastState = state;
+        render(state);
+      } catch(e) { /* ignore non-JSON */ }
+    };
+  }
+  connect();
+
+  // Betting
+  function sendBet(side) {
+    var amount = parseFloat(amtInput.value);
+    var name = nameInput.value.trim() || 'Spectator';
+    if (isNaN(amount) || amount < 0.10 || amount > 5.00) {
+      $('bet-confirm').textContent = 'Amount must be 0.10 - 5.00';
+      $('bet-confirm').style.color = 'var(--red)';
+      return;
+    }
+    if (amount > localBalance) {
+      $('bet-confirm').textContent = 'Insufficient balance!';
+      $('bet-confirm').style.color = 'var(--red)';
+      return;
+    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      $('bet-confirm').textContent = 'Not connected';
+      $('bet-confirm').style.color = 'var(--red)';
+      return;
+    }
+    localBalance -= amount;
+    saveBalance();
+    updateBalanceDisplay();
+    ws.send(JSON.stringify({ type: 'bet', side: side, amount: amount, name: name }));
+    $('bet-confirm').textContent = 'Bet placed! ' + amount.toFixed(2) + ' on ' + side;
+    $('bet-confirm').style.color = 'var(--green)';
+    $('btn-bet-x').disabled = true;
+    $('btn-bet-o').disabled = true;
+  }
+
+  $('btn-bet-x').addEventListener('click', function(){ sendBet('X'); });
+  $('btn-bet-o').addEventListener('click', function(){ sendBet('O'); });
+
+  function saveBalance() {
+    localStorage.setItem(LS_BAL, localBalance.toFixed(2));
+  }
+
+  function updateBalanceDisplay() {
+    $('local-balance').textContent = localBalance.toFixed(2);
+  }
+
+  // Render
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function truncKey(k) {
+    if (!k || k.length < 8) return k || '—';
+    return k.slice(0,4) + '..' + k.slice(-4);
+  }
+
+  function render(s) {
+    // Spectators
+    $('spectators').textContent = s.spectatorCount != null
+      ? s.spectatorCount + ' spectator' + (s.spectatorCount !== 1 ? 's' : '') + ' watching'
+      : '';
+
+    // Header subtitle
+    var sub = document.querySelector('.header .sub');
+    var roundLabel = s.round && s.round > 1 ? '  Round ' + s.round : '';
+    sub.textContent = s.series ? 'Connect Four — Best of 3' + roundLabel : 'Connect Four';
+
+    // Wallets
+    renderWallets(s);
+
+    // Score + Pot
+    renderScorePot(s);
+
+    // Board
+    renderBoard(s);
+
+    // Status
+    renderStatus(s);
+
+    // Market
+    renderMarket(s);
+
+    // Betting visibility
+    var newPhase = s.phase;
+    if (newPhase === 'betting') {
+      $('betting').style.display = '';
+      if (newPhase !== currentPhase) {
+        $('btn-bet-x').disabled = false;
+        $('btn-bet-o').disabled = false;
+        $('bet-confirm').textContent = '';
+      }
+    } else {
+      $('betting').style.display = 'none';
+    }
+    currentPhase = newPhase;
+
+    // Payout tracking
+    if (s.market && s.market.resolved && s.market.payouts) {
+      applyPayouts(s.market.payouts);
+    }
+  }
+
+  function renderWallets(s) {
+    var el = $('wallets');
+    if (s.walletX && s.walletO) {
+      el.innerHTML =
+        '<div class="wallet x"><div class="name">' + esc(s.walletX.name) + '</div><div class="bal">' + s.walletX.balance.toFixed(2) + ' SOL</div><div class="key">' + truncKey(s.walletX.pubkey) + '</div></div>' +
+        '<div class="wallet o"><div class="name">' + esc(s.walletO.name) + '</div><div class="bal">' + s.walletO.balance.toFixed(2) + ' SOL</div><div class="key">' + truncKey(s.walletO.pubkey) + '</div></div>';
+    } else {
+      el.innerHTML =
+        '<div class="wallet x"><div class="name">Agent X</div><div class="bal">Waiting...</div><div class="key">—</div></div>' +
+        '<div class="wallet o"><div class="name">Agent O</div><div class="bal">Waiting...</div><div class="key">—</div></div>';
+    }
+  }
+
+  function renderScorePot(s) {
+    var el = $('score-pot');
+    var series = s.series || { scoreX: 0, scoreO: 0, gameNumber: 1 };
+    var potVal = s.pot > 0 ? s.pot.toFixed(2) + ' SOL' : '0.00 SOL';
+    var potClass = s.pot > 0 ? 'val' : 'val zero';
+    var gameNum = s.series ? '<div class="game-num">Game ' + series.gameNumber + '</div>' : '';
+    el.innerHTML =
+      '<div class="series-score"><span class="sx">X</span> ' + series.scoreX + ' — ' + series.scoreO + ' <span class="so">O</span></div>' +
+      '<div class="pot">POT: <span class="' + potClass + '">' + potVal + '</span></div>' +
+      gameNum;
+  }
+
+  function renderBoard(s) {
+    var wrap = $('board-wrap');
+    if (!s.game || !s.game.board) {
+      wrap.innerHTML = '<div class="board-placeholder">Game board will appear here</div>';
+      prevBoard = null;
+      return;
+    }
+    var board = s.game.board;
+    var last = s.game.lastMove;
+    var ROWS = board.length;
+    var COLS = board[0].length;
+
+    var html = '<div class="col-nums">';
+    for (var c = 0; c < COLS; c++) html += '<span>' + c + '</span>';
+    html += '</div><div class="board">';
+
+    for (var r = 0; r < ROWS; r++) {
+      html += '<div class="board-row">';
+      for (var c2 = 0; c2 < COLS; c2++) {
+        var v = board[r][c2];
+        var cls = v || 'empty';
+        var isLast = last && last.row === r && last.col === c2;
+        var isNew = v && (!prevBoard || !prevBoard[r] || prevBoard[r][c2] !== v);
+        var extra = (isLast ? ' last' + (v === 'O' ? ' O' : '') : '') + (isNew ? ' drop' : '');
+        var symbol = v === 'X' ? 'X' : v === 'O' ? 'O' : '\u00B7';
+        html += '<div class="cell ' + cls + extra + '">' + symbol + '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    wrap.innerHTML = html;
+
+    // Save board for next diff
+    prevBoard = board.map(function(row){ return row.slice(); });
+  }
+
+  function renderStatus(s) {
+    var el = $('status');
+    var text = esc(s.status || '');
+    var resolved = s.market && s.market.resolved;
+    if (!resolved && s.phase === 'outcome' && s.game) {
+      if (s.game.winner && s.game.winner !== 'draw') {
+        var color = s.game.winner === 'X' ? 'var(--cyan)' : 'var(--red)';
+        text = '<span style="color:' + color + ';font-weight:700">' + s.game.winner + '</span> <span style="color:var(--green);font-weight:700">WINS!</span>';
+      } else if (s.game.winner === 'draw') {
+        text = '<span style="color:var(--yellow);font-weight:700">DRAW — game does not count</span>';
+      }
+    }
+    el.innerHTML = text;
+  }
+
+  function renderMarket(s) {
+    var el = $('market');
+    if (!s.market || !s.market.bets || s.market.bets.length === 0) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
+    var m = s.market;
+    var label = m.resolved ? 'Results' : 'Predictions';
+
+    var html = '<h3>' + label + '</h3>';
+    for (var i = 0; i < m.bets.length; i++) {
+      var b = m.bets[i];
+      var profitHtml = '';
+      if (m.resolved && m.payouts && m.payouts[i]) {
+        var p = m.payouts[i];
+        var sign = p.profit >= 0 ? '+' : '';
+        var cls = p.profit >= 0 ? 'win' : 'loss';
+        profitHtml = '<span class="profit ' + cls + '">' + sign + p.profit.toFixed(2) + '</span>';
+      }
+      html += '<div class="bet-row"><span><span class="side ' + b.side + '">' + b.side + '</span> ' + esc(b.name) + '</span><span><span class="amt">' + b.amount.toFixed(2) + '</span> ' + profitHtml + '</span></div>';
+    }
+
+    // Pool + odds
+    var xTotal = 0, oTotal = 0;
+    for (var j = 0; j < m.bets.length; j++) {
+      if (m.bets[j].side === 'X') xTotal += m.bets[j].amount;
+      else oTotal += m.bets[j].amount;
+    }
+    var total = xTotal + oTotal;
+    var xPct = total > 0 ? Math.round(xTotal / total * 100) : 50;
+    var oPct = total > 0 ? 100 - xPct : 50;
+    html += '<div class="pool-line"><span>Pool: <span class="pool-val">' + m.pool.toFixed(2) + ' SOL</span></span><span class="odds"><span class="x">X ' + xPct + '%</span> / <span class="o">O ' + oPct + '%</span></span></div>';
+
+    if (m.resolved && m.houseTake != null && m.houseTake > 0) {
+      html += '<div class="house-line">House: ' + m.houseTake.toFixed(3) + ' SOL (5% rake)</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  // Payout Tracking
+  var lastPayoutApplied = null;
+
+  function applyPayouts(payouts) {
+    var fp = JSON.stringify(payouts);
+    if (fp === lastPayoutApplied) return;
+    lastPayoutApplied = fp;
+
+    var myName = (nameInput.value.trim() || 'Spectator').toLowerCase();
+    for (var i = 0; i < payouts.length; i++) {
+      var p = payouts[i];
+      if (p.name.toLowerCase() === myName) {
+        localBalance += p.amount;
+        break;
+      }
+    }
+    saveBalance();
+    updateBalanceDisplay();
+  }
+})();
+</script>
+</body>
+</html>

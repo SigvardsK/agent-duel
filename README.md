@@ -57,6 +57,8 @@ npm run demo:auto:short     # 5 rounds, quick test
 |------|---------|-------------|
 | `--auto` | off | Fully autonomous mode — no user prompts, AI spectators only |
 | `--rounds N` | 50 | Maximum number of series to play before stopping |
+| `--web` | off | Start WebSocket + HTTP server for web spectators |
+| `--port N` | 8080 | Port for web server (requires `--web`) |
 
 ### Failsafes
 
@@ -86,8 +88,11 @@ src/
   settlement.ts   Game outcome -> SOL transfer with optional HITL approval
   market.ts       Parimutuel prediction market with 5% house rake (pure functions)
   renderer.ts     ANSI terminal renderer (colors, box drawing, in-place redraws)
-  demo.ts         Visual orchestrator (continuous loop, betting, series, pacing)
+  server.ts       WebSocket + HTTP server (state streaming, bet intake, static serving)
+  demo.ts         Visual orchestrator (continuous loop, web integration, betting windows)
   main.ts         Developer CLI (--level 1/2/3)
+web/
+  index.html      Single-file web spectator UI (no build step, no framework)
 ```
 
 ### Agent Design
@@ -114,6 +119,20 @@ Uses a **closed-book parimutuel** model:
 - Payouts calculated proportionally: `your_payout = (your_bet / winning_side_total) * effective_pool`
 - N bettors scale naturally — those who bet more get proportionally more
 
+### Web Spectator UI
+
+When running with `--web`, a browser-based spectator interface is served at `http://localhost:8080`:
+
+- **Real-time game board** — Connect Four grid with colored pieces, drop animations, last-move highlighting
+- **Live wallet balances** — Agent X/O balances updated after each settlement
+- **Prediction market** — Live odds, pool size, per-bettor profit/loss on resolution
+- **Play-money betting** — Pick a side, enter an amount (0.10-5.00), local balance tracked in localStorage (starts at 10.00)
+- **15-second betting window** — In auto mode, web spectators have a countdown to place bets before each series
+- **Auto-reconnect** — Exponential backoff (500ms-5s), connection status indicator
+- **Terminal aesthetic** — Dark theme, monospace font, scan-line overlay, responsive down to 360px
+
+No framework, no build step — a single HTML file with inline CSS/JS.
+
 ### Cost Model (24/7 Operation)
 
 | Item | Monthly Cost |
@@ -129,12 +148,13 @@ Uses a **closed-book parimutuel** model:
 - **Claude tool use** — structured game-playing agents with distinct strategies
 - **On-chain settlement** — real transfers on a Solana validator (local or DevNet)
 - **Prediction markets** — parimutuel betting with house rake for agent-vs-agent outcomes
+- **Real-time web streaming** — WebSocket state broadcasting with play-money spectator betting
 - **Continuous autonomous operation** — agents play 24/7 with failsafes
-- **Terminal rendering** — zero-dependency ANSI TUI with in-place redraws
+- **Terminal + web rendering** — ANSI TUI and browser UI from the same game state
 
 ## Background
 
-Built as a single-day experiment to validate Solana agent wallet DX. Upgraded to Connect Four with continuous loop and house cut for public demo readiness. See [ASSESSMENT.md](ASSESSMENT.md) for the original feasibility research and [LEARNINGS.md](LEARNINGS.md) for findings.
+Built as a single-day experiment to validate Solana agent wallet DX. Upgraded to Connect Four with continuous loop, house cut, and web spectator UI for public demo readiness. See [ASSESSMENT.md](ASSESSMENT.md) for the original feasibility research and [LEARNINGS.md](LEARNINGS.md) for findings.
 
 ## License
 

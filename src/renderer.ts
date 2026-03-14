@@ -236,13 +236,14 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function startThinking(state: DuelState, agentName: string): () => void {
+export function startThinking(state: DuelState, agentName: string, renderFn?: (state: DuelState) => void): () => void {
+  const doRender = renderFn ?? renderFrame;
   let dots = 0;
   const interval = setInterval(() => {
     dots = (dots + 1) % 4;
     const dotStr = ".".repeat(dots);
     state.status = `${agentName} thinking${dotStr}`;
-    renderFrame(state);
+    doRender(state);
   }, 400);
 
   return () => clearInterval(interval);

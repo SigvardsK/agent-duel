@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market with 5% house rake. Visual ANSI terminal demo.
+Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market with 5% house rake. Terminal TUI + web spectator UI with play-money betting.
 
-**Status:** Phase 2 complete — Connect Four + house cut + continuous loop. Next: Phase 3 (web UI + WebSocket streaming).
+**Status:** Phase 3 complete — Web UI + WebSocket streaming + play-money betting. Next: Phase 4 (content + distribution).
 **Priority:** Build in gaps between P0 work.
 
 ## Stack
@@ -12,8 +12,10 @@ Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on eac
 - TypeScript + tsx (zero-config execution)
 - `@solana/web3.js` v1.x — wallet creation, airdrop, transfers
 - `@anthropic-ai/sdk` — Claude Haiku 4.5 tool use for agent play
+- `ws` — WebSocket server for real-time state streaming
 - Local `solana-test-validator` (DevNet airdrops unreliable)
 - ANSI escape codes — zero-dependency terminal UI
+- Single-file web client — HTML/CSS/JS, no build step, dark terminal aesthetic
 - Vitest — test framework
 
 ## Architecture
@@ -22,7 +24,8 @@ Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on eac
 - **Direct transfers** — SystemProgram.transfer, no escrow (yet)
 - **Claude agents** — Haiku 4.5, temperature 0, 3 tools (read_board, drop_piece, check_game_status)
 - **Best-of-3 series** — first to 2 wins, max 5 games, draws don't count, alternating first player
-- **Parimutuel prediction market** — off-chain, pure functions, AI spectators + user bets, 5% house rake
+- **Parimutuel prediction market** — off-chain, pure functions, AI spectators + web bets, 5% house rake
+- **Web spectator UI** — WebSocket state streaming, play-money betting, auto-reconnect
 - **Visual TUI** — ANSI colors, box drawing, in-place redraws, animated thinking indicator
 
 ---
@@ -174,11 +177,13 @@ Reject handoffs that lack:
 - `src/game.ts` — Connect Four state machine (6x7, gravity drops, pure, immutable)
 - `src/wallet.ts` — Keypair gen, airdrop, transfer, balance
 - `src/agents.ts` — Claude tool-use agent wrappers with stakes-aware prompts
-- `src/market.ts` — Parimutuel prediction market (pure functions)
+- `src/market.ts` — Parimutuel prediction market with 5% house rake (pure functions)
 - `src/renderer.ts` — ANSI terminal renderer (colors, box drawing, predictions panel)
-- `src/demo.ts` — Visual orchestrator (series, betting, rounds, pacing)
+- `src/server.ts` — WebSocket + HTTP server (state broadcasting, bet intake, static file serving)
+- `src/demo.ts` — Visual orchestrator (continuous loop, web integration, betting windows)
 - `src/settlement.ts` — Game outcome → SOL transfer with optional HITL
 - `src/main.ts` — Developer CLI (--level 1/2/3)
+- `web/index.html` — Single-file web spectator UI (Connect Four board, play-money betting)
 - `ASSESSMENT.md` — Strategic assessment with EVRICE + outcome appendix
 - `LEARNINGS.md` — Full experiment findings and takeaways
 
@@ -194,9 +199,13 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 npm run demo                # Interactive (user bets, asks "go again?")
 npm run demo:auto           # Autonomous (50 rounds, no user input)
 npm run demo:auto:short     # Quick test (5 rounds)
+npm run demo:web            # Interactive + web UI at http://localhost:8080
+npm run demo:web:auto       # Autonomous + web UI (spectators bet via browser)
 
 # CLI flags
-tsx src/demo.ts --auto --rounds 10   # Custom round count
+tsx src/demo.ts --auto --rounds 10           # Custom round count
+tsx src/demo.ts --web --port 3000            # Custom web port
+tsx src/demo.ts --web --auto --rounds 10     # All flags
 
 # Developer levels
 npm run wallet-test    # L1: wallet infrastructure
