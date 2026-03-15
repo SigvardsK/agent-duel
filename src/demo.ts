@@ -12,10 +12,10 @@ import {
 import { createServer, DuelServer } from "./server.js";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
-const STAKE = 0.5;
+const STAKE = 0.1;
 const WINS_NEEDED = 2;
 const MAX_GAMES = 5;
-const MIN_BALANCE = 0.6; // SOL — stop if either wallet drops below this (can't afford stake + fees)
+const MIN_BALANCE = 0.15; // SOL — stop if either wallet drops below this (can't afford stake + fees)
 const DEFAULT_MAX_ROUNDS = 50;
 const DEFAULT_WEB_PORT = parseInt(process.env.PORT || "8080");
 const WEB_BETTING_WINDOW_SECS = 15;
