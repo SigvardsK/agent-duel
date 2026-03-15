@@ -80,13 +80,50 @@ export interface DuelServer {
   onBet(callback: (bet: { name: string; side: string; amount: number }) => void): void;
   clearBetHandlers(): void;
   getSpectatorCount(): number;
+  shouldStart(): boolean;
+  shouldStop(): boolean;
+  clearStartFlag(): void;
+  clearStopFlag(): void;
   close(): void;
 }
 
 export function createServer(port: number): DuelServer {
   let latestState: DuelState | null = null;
+  let adminStartFlag = false;
+  let adminStopFlag = false;
+
+  function checkAdminAuth(req: IncomingMessage, res: ServerResponse): boolean {
+    const token = process.env.ADMIN_TOKEN;
+    if (token) {
+      const auth = req.headers.authorization;
+      if (auth !== `Bearer ${token}`) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return false;
+      }
+    }
+    return true;
+  }
 
   const httpServer = createHttpServer((req, res) => {
+    // Admin API: force-start a round
+    if (req.method === "POST" && req.url === "/api/start") {
+      if (!checkAdminAuth(req, res)) return;
+      adminStartFlag = true;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "starting" }));
+      return;
+    }
+
+    // Admin API: signal stop after current round
+    if (req.method === "POST" && req.url === "/api/stop") {
+      if (!checkAdminAuth(req, res)) return;
+      adminStopFlag = true;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "stopping" }));
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/health") {
       const body = JSON.stringify({
         status: "ok",
@@ -155,6 +192,22 @@ export function createServer(port: number): DuelServer {
 
     getSpectatorCount(): number {
       return wss.clients.size;
+    },
+
+    shouldStart(): boolean {
+      return adminStartFlag;
+    },
+
+    shouldStop(): boolean {
+      return adminStopFlag;
+    },
+
+    clearStartFlag(): void {
+      adminStartFlag = false;
+    },
+
+    clearStopFlag(): void {
+      adminStopFlag = false;
     },
 
     close(): void {

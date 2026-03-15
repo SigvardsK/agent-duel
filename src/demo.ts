@@ -10,6 +10,7 @@ import {
   getFrameHeight, colorPlayer,
 } from "./renderer.js";
 import { createServer, DuelServer } from "./server.js";
+import { loadHistory, saveHistory } from "./history.js";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
 const STAKE = 0.1;
@@ -22,13 +23,16 @@ const WEB_BETTING_WINDOW_SECS = 15;
 
 const DEFAULT_DELAY_SECS = 120;
 
-function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: number; delay: number } {
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes before returning to idle
+
+function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: number; delay: number; idle: boolean } {
   const args = process.argv.slice(2);
   let maxRounds = DEFAULT_MAX_ROUNDS;
   let auto = false;
   let web = false;
   let port = DEFAULT_WEB_PORT;
   let delay = DEFAULT_DELAY_SECS;
+  let idle = false;
 
   const roundsIdx = args.indexOf("--rounds");
   if (roundsIdx !== -1 && args[roundsIdx + 1]) {
@@ -48,8 +52,11 @@ function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: nu
   if (args.includes("--web")) {
     web = true;
   }
+  if (args.includes("--idle")) {
+    idle = true;
+  }
 
-  return { maxRounds, auto, web, port, delay };
+  return { maxRounds, auto, web, port, delay, idle };
 }
 
 // ─── Broadcast-aware render wrapper ─────────────────────────
@@ -305,7 +312,10 @@ async function runSeries(
     const loser = gameWinner === "X" ? walletO : walletX;
     const winner = gameWinner === "X" ? walletX : walletO;
     try {
-      await transferSOL(connection, loser, winner, STAKE);
+      const sig = await transferSOL(connection, loser, winner, STAKE);
+      state.lastTxSignature = sig;
+      if (!state.txSignatures) state.txSignatures = [];
+      state.txSignatures.push(sig);
     } catch (err) {
       console.warn(`[settlement] Transfer failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -384,6 +394,7 @@ async function runRound(
       timestamp: Date.now(),
     });
     if (state.history!.length > 20) state.history!.shift();
+    saveHistory(state.history!);
     return;
   }
 
@@ -426,40 +437,17 @@ async function runRound(
     timestamp: Date.now(),
   });
   if (state.history!.length > 20) state.history!.shift();
+  saveHistory(state.history!);
 }
 
 // ─── Main Flow ───────────────────────────────────────────────
 
-async function run() {
-  const { maxRounds, auto, web, port, delay } = parseArgs();
+// ─── Wallet Setup (extracted for idle mode reuse) ─────────
 
-  // In web mode, keep console.log for production logging (Railway captures stdout).
-  // In TUI-only mode, suppress console.log — the renderer owns the display.
-  if (!web) {
-    console.log = (..._args: unknown[]) => {};
-  }
-
-  const connection = new Connection(RPC_URL, "confirmed");
-
-  // Start web server if requested — only once (avoid EADDRINUSE on restart)
-  if (web && !server) {
-    server = createServer(port);
-  }
-
-  const state: DuelState = {
-    pot: 0,
-    status: web ? `Initializing... (web UI on port ${port})` : "Initializing...",
-    phase: "init",
-    history: [],
-  };
-
-  process.on("exit", () => { server?.close(); cleanup(); });
-  process.on("SIGINT", () => { server?.close(); cleanup(); process.exit(0); });
-
-  render(state);
-  await sleep(800);
-
-  // Create wallets
+async function setupWallets(
+  state: DuelState,
+  connection: Connection,
+): Promise<{ walletX: Wallet; walletO: Wallet; treasury: Wallet | null } | null> {
   state.phase = "wallets";
   state.status = "Creating wallets...";
 
@@ -483,12 +471,20 @@ async function run() {
     const tBal = await getBalance(connection, treasury);
     console.log(`[wallet] Treasury balance: ${tBal} SOL`);
 
-    await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT);
+    const fundSigX = await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT);
+    if (fundSigX) {
+      if (!state.txSignatures) state.txSignatures = [];
+      state.txSignatures.push(fundSigX);
+    }
     state.walletX.balance = await getBalance(connection, walletX);
     render(state);
     await sleep(400);
 
-    await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT);
+    const fundSigO = await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT);
+    if (fundSigO) {
+      if (!state.txSignatures) state.txSignatures = [];
+      state.txSignatures.push(fundSigO);
+    }
     state.walletO.balance = await getBalance(connection, walletO);
     render(state);
   } else {
@@ -506,23 +502,84 @@ async function run() {
   }
 
   if (state.walletX.balance < STAKE || state.walletO.balance < STAKE) {
-    state.status = "Funding failed — restarting in 60s...";
-    render(state);
-    await sleep(60000);
-    return run();
+    return null; // Funding failed
   }
 
   state.status = "Both players funded";
   render(state);
   await sleep(800);
 
-  // ─── Game Loop ─────────────────────────────────────
+  return { walletX, walletO, treasury };
+}
+
+// ─── Idle Mode: Wait for Spectators ─────────────────────
+
+async function waitForActivation(state: DuelState): Promise<void> {
+  if (!server) return;
+
+  state.phase = "idle";
+  state.status = "Arena idle — waiting for spectators...";
+  state.game = undefined;
+  state.market = undefined;
+  state.walletX = undefined;
+  state.walletO = undefined;
+  state.series = undefined;
+  state.pot = 0;
+  render(state);
+
+  while (true) {
+    // Check for spectators or admin force-start
+    if (server.getSpectatorCount() > 0) {
+      console.log(`[idle] ${server.getSpectatorCount()} spectator(s) detected — activating`);
+      break;
+    }
+    if (server.shouldStart()) {
+      server.clearStartFlag();
+      console.log("[idle] Admin force-start received — activating");
+      break;
+    }
+
+    state.status = "Arena idle — waiting for spectators...";
+    state.phase = "idle";
+    render(state);
+    await sleep(5000);
+  }
+
+  // Activation sequence
+  state.status = "Arena activating...";
+  state.phase = "init";
+  render(state);
+  await sleep(3000);
+}
+
+// ─── Game Loop (extracted for idle mode reuse) ─────────
+
+async function runGameLoop(
+  state: DuelState,
+  connection: Connection,
+  walletX: Wallet,
+  walletO: Wallet,
+  treasury: Wallet | null,
+  maxRounds: number,
+  auto: boolean,
+  delay: number,
+  idle: boolean,
+): Promise<void> {
+  const FUND_AMOUNT = 0.2;
   let round = 0;
+  let idleTimerStart: number | null = null;
 
   while (round < maxRounds) {
+    // ─── Idle mode: check for admin stop ───────────
+    if (idle && server?.shouldStop()) {
+      server.clearStopFlag();
+      console.log("[idle] Admin stop received — returning to idle");
+      break;
+    }
+
     round++;
 
-    await runRound(state, connection, walletX, walletO, round, auto);
+    await runRound(state, connection, walletX, walletO, round, auto || idle);
 
     // ─── Balance floor check ─────────────────────────
     const balX = await getBalance(connection, walletX);
@@ -531,20 +588,30 @@ async function run() {
     state.walletO!.balance = balO;
 
     if (balX < MIN_BALANCE || balO < MIN_BALANCE) {
-      if (auto) {
-        // Auto mode: top up and continue
+      if (auto || idle) {
+        // Auto/idle mode: top up and continue
         state.status = "Low balance — topping up...";
         render(state);
         if (balX < MIN_BALANCE) {
-          const ok = treasury ? await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT)
-                              : await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
-          if (!ok) console.warn("[wallet] Top-up failed for Agent Neo");
+          const result = treasury ? await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT)
+                                  : await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
+          if (!result) {
+            console.warn("[wallet] Top-up failed for Agent Neo");
+          } else if (typeof result === "string") {
+            if (!state.txSignatures) state.txSignatures = [];
+            state.txSignatures.push(result);
+          }
           state.walletX!.balance = await getBalance(connection, walletX);
         }
         if (balO < MIN_BALANCE) {
-          const ok = treasury ? await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT)
-                              : await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
-          if (!ok) console.warn("[wallet] Top-up failed for Agent Smith");
+          const result = treasury ? await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT)
+                                  : await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
+          if (!result) {
+            console.warn("[wallet] Top-up failed for Agent Smith");
+          } else if (typeof result === "string") {
+            if (!state.txSignatures) state.txSignatures = [];
+            state.txSignatures.push(result);
+          }
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";
@@ -560,14 +627,67 @@ async function run() {
     }
 
     // ─── Next round or stop ──────────────────────────
-    if (auto) {
+    if (auto || idle) {
       // Reset for next round
       state.market = undefined;
       state.game = undefined;
       state.pot = 0;
-      state.status = `Round ${round} complete — next round in ${delay}s...`;
+
+      // ─── Idle mode: spectator check with 5-min timeout ───
+      if (idle && server) {
+        const spectators = server.getSpectatorCount();
+        if (spectators === 0) {
+          if (idleTimerStart === null) {
+            idleTimerStart = Date.now();
+            console.log("[idle] No spectators — starting 5-minute idle timer");
+          }
+
+          // Check if 5-minute timeout has elapsed
+          if (Date.now() - idleTimerStart >= IDLE_TIMEOUT_MS) {
+            console.log("[idle] 5-minute timeout — returning to idle");
+            break;
+          }
+
+          const remainingSecs = Math.ceil((IDLE_TIMEOUT_MS - (Date.now() - idleTimerStart)) / 1000);
+          state.status = `No spectators — idle in ${remainingSecs}s... Next round in ${delay}s`;
+        } else {
+          // Spectators reconnected — cancel idle timer
+          if (idleTimerStart !== null) {
+            console.log("[idle] Spectators reconnected — cancelling idle timer");
+            idleTimerStart = null;
+          }
+          state.status = `Round ${round} complete — next round in ${delay}s...`;
+        }
+
+        // Check for admin stop during delay
+        if (server.shouldStop()) {
+          server.clearStopFlag();
+          console.log("[idle] Admin stop received — returning to idle");
+          break;
+        }
+      } else {
+        state.status = `Round ${round} complete — next round in ${delay}s...`;
+      }
+
       render(state);
       await sleep(delay * 1000);
+
+      // Re-check spectators after delay (idle mode)
+      if (idle && server) {
+        if (server.shouldStop()) {
+          server.clearStopFlag();
+          console.log("[idle] Admin stop received — returning to idle");
+          break;
+        }
+        if (server.getSpectatorCount() === 0 && idleTimerStart !== null) {
+          if (Date.now() - idleTimerStart >= IDLE_TIMEOUT_MS) {
+            console.log("[idle] 5-minute timeout after delay — returning to idle");
+            break;
+          }
+        } else if (server.getSpectatorCount() > 0) {
+          idleTimerStart = null;
+        }
+      }
     } else {
       // Ask user
       state.status = `Round ${round}/${maxRounds} complete`;
@@ -581,14 +701,86 @@ async function run() {
       state.pot = 0;
     }
   }
+}
+
+async function run() {
+  const { maxRounds, auto, web, port, delay, idle } = parseArgs();
+
+  // In web mode, keep console.log for production logging (Railway captures stdout).
+  // In TUI-only mode, suppress console.log — the renderer owns the display.
+  if (!web) {
+    console.log = (..._args: unknown[]) => {};
+  }
+
+  const connection = new Connection(RPC_URL, "confirmed");
+
+  // Start web server if requested — only once (avoid EADDRINUSE on restart)
+  // Server must start BEFORE idle loop so it can serve the web UI and detect spectators
+  if (web && !server) {
+    server = createServer(port);
+  }
+
+  const state: DuelState = {
+    pot: 0,
+    status: web ? `Initializing... (web UI on port ${port})` : "Initializing...",
+    phase: "init",
+    history: loadHistory(),
+    txSignatures: [],
+  };
+
+  process.on("exit", () => { server?.close(); cleanup(); });
+  process.on("SIGINT", () => { server?.close(); cleanup(); process.exit(0); });
+
+  render(state);
+  await sleep(800);
+
+  if (idle) {
+    // ─── Idle Mode: outer loop ─────────────────────────
+    // Wait for spectators, activate, play, return to idle when spectators leave
+    while (true) {
+      await waitForActivation(state);
+
+      // Create and fund wallets after activation (save treasury SOL during idle)
+      const wallets = await setupWallets(state, connection);
+      if (!wallets) {
+        state.status = "Funding failed — returning to idle in 60s...";
+        render(state);
+        await sleep(60000);
+        continue;
+      }
+
+      const { walletX, walletO, treasury } = wallets;
+
+      await runGameLoop(state, connection, walletX, walletO, treasury, maxRounds, false, delay, true);
+
+      // Return to idle — show transition message
+      state.phase = "done";
+      state.status = "Arena winding down...";
+      state.market = undefined;
+      state.game = undefined;
+      render(state);
+      await sleep(3000);
+    }
+  }
+
+  // ─── Non-idle Mode (original flow) ──────────────────
+  const wallets = await setupWallets(state, connection);
+  if (!wallets) {
+    state.status = "Funding failed — restarting in 60s...";
+    render(state);
+    await sleep(60000);
+    return run();
+  }
+
+  const { walletX, walletO, treasury } = wallets;
+
+  await runGameLoop(state, connection, walletX, walletO, treasury, maxRounds, auto, delay, false);
 
   // ─── Final ─────────────────────────────────────────
   state.walletX!.balance = await getBalance(connection, walletX);
   state.walletO!.balance = await getBalance(connection, walletO);
   state.phase = "done";
-  state.status = round >= maxRounds
-    ? `All ${maxRounds} rounds complete — thanks for watching!`
-    : "Thanks for watching!";
+  state.status = "Thanks for watching!";
   state.market = undefined;
   render(state);
   await sleep(4000);

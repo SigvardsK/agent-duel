@@ -3,3 +3,4 @@ dist/
 .env
 *.keypair.json
 test-ledger/
+data/

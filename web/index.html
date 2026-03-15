@@ -76,6 +76,36 @@ body::after{
   0%{background-position:-200% 0}
   100%{background-position:200% 0}
 }
+@keyframes idle-pulse{
+  0%,100%{opacity:0.4;text-shadow:0 0 20px rgba(0,255,255,0.2)}
+  50%{opacity:1;text-shadow:0 0 40px rgba(0,255,255,0.6),0 0 80px rgba(0,255,255,0.3)}
+}
+@keyframes idle-glow-activate{
+  0%{opacity:0;transform:scale(0.95)}
+  50%{opacity:1;transform:scale(1.02);text-shadow:0 0 60px rgba(0,255,255,0.8),0 0 120px rgba(0,255,255,0.4)}
+  100%{opacity:1;transform:scale(1);text-shadow:0 0 30px rgba(0,255,255,0.5)}
+}
+
+/* ── Idle State ────────────────────────────────────── */
+
+.idle-overlay{
+  display:none;text-align:center;padding:60px 20px;margin-bottom:16px;
+  border:1px solid var(--border);border-radius:8px;background:var(--bg-card);
+}
+.idle-overlay.visible{display:block}
+.idle-title{
+  font-family:var(--font-display);font-size:32px;font-weight:900;letter-spacing:8px;
+  color:var(--cyan);animation:idle-pulse 3s ease-in-out infinite;
+  margin-bottom:16px;
+}
+.idle-sub{
+  font-family:var(--font-mono);font-size:13px;color:var(--dim);
+  letter-spacing:2px;
+}
+.idle-overlay.activating .idle-title{
+  animation:idle-glow-activate 1.5s ease-out forwards;
+  color:var(--green);
+}
 
 /* ── Connection Status ──────────────────────────────── */
 
@@ -176,6 +206,34 @@ body::after{
 .wallet.o .name{color:var(--red)}
 .wallet.x.active{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
 .wallet.o.active{border-color:var(--red);box-shadow:var(--glow-red)}
+.wallet .key a{
+  color:var(--dim);text-decoration:none;transition:color .2s;
+}
+.wallet .key a:hover{color:var(--cyan);text-shadow:0 0 6px rgba(0,255,255,0.3)}
+
+/* ── Explorer / Transaction Links ──────────────────── */
+
+.tx-link{
+  display:inline-flex;align-items:center;gap:4px;
+  color:var(--cyan);text-decoration:none;font-size:12px;font-family:var(--font-mono);
+  opacity:0.7;transition:opacity .2s,text-shadow .2s;
+}
+.tx-link:hover{opacity:1;text-shadow:0 0 8px rgba(0,255,255,0.4)}
+.tx-link.settlement{color:var(--green)}
+.tx-link.settlement:hover{text-shadow:0 0 8px rgba(0,255,136,0.4)}
+.tx-section{
+  margin-top:10px;padding-top:8px;border-top:1px solid var(--border);
+  font-size:11px;
+}
+.tx-section h4{
+  font-family:var(--font-display);font-size:10px;letter-spacing:2px;color:var(--dim);
+  margin-bottom:6px;text-transform:uppercase;
+}
+.tx-section .tx-list{display:flex;flex-direction:column;gap:3px}
+.settlement-line{
+  text-align:center;margin-top:6px;font-size:12px;color:var(--dim);
+  animation:fade-in .4s ease-out;
+}
 
 /* ── Score + Pot Bar ────────────────────────────────── */
 
@@ -437,6 +495,11 @@ body::after{
     <div class="spectators" id="spectators"></div>
   </div>
 
+  <div class="idle-overlay" id="idle-overlay">
+    <div class="idle-title">ARENA IDLE</div>
+    <div class="idle-sub">Waiting for spectators to activate...</div>
+  </div>
+
   <div class="fight-card" id="fight-card">
     <div class="fight-card-inner">
       <div class="fight-panel x" id="fight-x">
@@ -597,12 +660,73 @@ body::after{
     return k.slice(0,4) + '..' + k.slice(-4);
   }
 
+  var EXPLORER_BASE = 'https://explorer.solana.com';
+
+  function explorerAddressUrl(pubkey) {
+    return EXPLORER_BASE + '/address/' + pubkey + '?cluster=devnet';
+  }
+
+  function explorerTxUrl(sig) {
+    return EXPLORER_BASE + '/tx/' + sig + '?cluster=devnet';
+  }
+
+  function truncSig(sig) {
+    if (!sig || sig.length < 12) return sig || '--';
+    return sig.slice(0,6) + '..' + sig.slice(-6);
+  }
+
   // Main render
+  var prevPhaseWasIdle = false;
+
   function render(s) {
     // Spectators
     $('spectators').textContent = s.spectatorCount != null
       ? s.spectatorCount + ' spectator' + (s.spectatorCount !== 1 ? 's' : '') + ' watching'
       : '';
+
+    // Idle overlay
+    var isIdle = s.phase === 'idle';
+    var isActivating = prevPhaseWasIdle && !isIdle && s.phase === 'init';
+    var idleEl = $('idle-overlay');
+
+    if (isIdle) {
+      idleEl.classList.add('visible');
+      idleEl.classList.remove('activating');
+      // Update live badge to show idle state
+      var liveBadge = document.querySelector('.header .live-badge');
+      if (liveBadge) liveBadge.innerHTML = '<span class="live-dot" style="background:var(--dim);animation:none;box-shadow:none"></span> IDLE';
+      // Hide game elements during idle
+      $('wallets').style.display = 'none';
+      $('score-pot').style.display = 'none';
+      $('board-wrap').style.display = 'none';
+      $('status').style.display = 'none';
+      $('market').style.display = 'none';
+      $('betting').style.display = 'none';
+      prevPhaseWasIdle = true;
+    } else {
+      if (isActivating) {
+        idleEl.classList.add('activating');
+        idleEl.querySelector('.idle-title').textContent = 'ARENA ACTIVATING';
+        idleEl.querySelector('.idle-sub').textContent = 'Preparing combatants...';
+        // Brief activation display, then hide
+        setTimeout(function(){ idleEl.classList.remove('visible'); idleEl.classList.remove('activating'); }, 3000);
+      } else {
+        idleEl.classList.remove('visible');
+        idleEl.classList.remove('activating');
+        // Reset text for next idle cycle
+        idleEl.querySelector('.idle-title').textContent = 'ARENA IDLE';
+        idleEl.querySelector('.idle-sub').textContent = 'Waiting for spectators to activate...';
+      }
+      // Restore live badge
+      var liveBadge2 = document.querySelector('.header .live-badge');
+      if (liveBadge2) liveBadge2.innerHTML = '<span class="live-dot"></span> LIVE';
+      // Show game elements
+      $('wallets').style.display = '';
+      $('score-pot').style.display = '';
+      $('board-wrap').style.display = '';
+      $('status').style.display = '';
+      prevPhaseWasIdle = false;
+    }
 
     // Header subtitle
     var sub = document.querySelector('.header .sub');
@@ -627,7 +751,7 @@ body::after{
     // Market
     renderMarket(s);
 
-    // History
+    // History (always visible, even during idle)
     renderHistory(s);
 
     // Betting visibility
@@ -639,7 +763,7 @@ body::after{
         $('btn-bet-o').disabled = false;
         $('bet-confirm').textContent = '';
       }
-    } else {
+    } else if (!isIdle) {
       $('betting').style.display = 'none';
     }
     currentPhase = newPhase;
@@ -679,9 +803,15 @@ body::after{
     if (s.walletX && s.walletO) {
       var xActive = currentPlayer === 'X' ? ' active' : '';
       var oActive = currentPlayer === 'O' ? ' active' : '';
+      var xKeyHtml = s.walletX.pubkey
+        ? '<a href="' + explorerAddressUrl(s.walletX.pubkey) + '" target="_blank" rel="noopener">' + truncKey(s.walletX.pubkey) + '</a>'
+        : truncKey(s.walletX.pubkey);
+      var oKeyHtml = s.walletO.pubkey
+        ? '<a href="' + explorerAddressUrl(s.walletO.pubkey) + '" target="_blank" rel="noopener">' + truncKey(s.walletO.pubkey) + '</a>'
+        : truncKey(s.walletO.pubkey);
       el.innerHTML =
-        '<div class="wallet x' + xActive + '"><div class="name">' + esc(s.walletX.name) + '</div><div class="bal">' + s.walletX.balance.toFixed(2) + ' SOL</div><div class="key">' + truncKey(s.walletX.pubkey) + '</div></div>' +
-        '<div class="wallet o' + oActive + '"><div class="name">' + esc(s.walletO.name) + '</div><div class="bal">' + s.walletO.balance.toFixed(2) + ' SOL</div><div class="key">' + truncKey(s.walletO.pubkey) + '</div></div>';
+        '<div class="wallet x' + xActive + '"><div class="name">' + esc(s.walletX.name) + '</div><div class="bal">' + s.walletX.balance.toFixed(2) + ' SOL</div><div class="key">' + xKeyHtml + '</div></div>' +
+        '<div class="wallet o' + oActive + '"><div class="name">' + esc(s.walletO.name) + '</div><div class="bal">' + s.walletO.balance.toFixed(2) + ' SOL</div><div class="key">' + oKeyHtml + '</div></div>';
     } else {
       el.innerHTML =
         '<div class="wallet x"><div class="name">AGENT NEO</div><div class="bal">Waiting...</div><div class="key">--</div></div>' +
@@ -766,6 +896,10 @@ body::after{
         text = '<span class="winner-text" style="color:var(--yellow)">DRAW</span> <span style="color:var(--dim)">- game does not count</span>';
       }
     }
+    // Add settlement tx link when available
+    if (s.lastTxSignature && (s.phase === 'settling' || s.phase === 'outcome')) {
+      text += '<div class="settlement-line">Settlement: <a class="tx-link settlement" href="' + explorerTxUrl(s.lastTxSignature) + '" target="_blank" rel="noopener">View on Explorer &rarr;</a></div>';
+    }
     el.innerHTML = text;
   }
 
@@ -812,6 +946,18 @@ body::after{
 
     if (m.resolved && m.houseTake != null && m.houseTake > 0) {
       html += '<div class="house-line">House: ' + m.houseTake.toFixed(3) + ' SOL (5% rake)</div>';
+    }
+
+    // On-chain transactions section
+    if (s.txSignatures && s.txSignatures.length > 0) {
+      html += '<div class="tx-section"><h4>On-chain Transactions</h4><div class="tx-list">';
+      // Show most recent transactions (last 6 max to avoid clutter)
+      var sigs = s.txSignatures;
+      var startIdx = Math.max(0, sigs.length - 6);
+      for (var t = startIdx; t < sigs.length; t++) {
+        html += '<a class="tx-link" href="' + explorerTxUrl(sigs[t]) + '" target="_blank" rel="noopener">' + truncSig(sigs[t]) + ' &rarr;</a>';
+      }
+      html += '</div></div>';
     }
 
     el.innerHTML = html;

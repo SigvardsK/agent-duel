@@ -13,6 +13,7 @@
     "demo:web": "tsx src/demo.ts --web",
     "demo:web:auto": "tsx src/demo.ts --web --auto --rounds 50",
     "demo:web:auto:fast": "tsx src/demo.ts --web --auto --rounds 9999 --delay 30",
+    "demo:web:idle": "tsx src/demo.ts --web --idle",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },

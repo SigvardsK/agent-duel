@@ -130,15 +130,15 @@ export async function fundFromTreasury(
   treasury: Wallet,
   target: Wallet,
   solAmount: number,
-): Promise<boolean> {
+): Promise<string | false> {
   try {
     const treasuryBalance = await getBalance(connection, treasury);
     if (treasuryBalance < solAmount + 0.01) { // 0.01 buffer for tx fees
       console.warn(`[wallet] Treasury low: ${treasuryBalance} SOL (need ${solAmount})`);
       return false;
     }
-    await transferSOL(connection, treasury, target, solAmount);
-    return true;
+    const sig = await transferSOL(connection, treasury, target, solAmount);
+    return sig;
   } catch (err) {
     console.warn(`[wallet] Treasury transfer failed: ${err instanceof Error ? err.message : String(err)}`);
     return false;

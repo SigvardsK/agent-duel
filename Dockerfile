@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE ${PORT:-8080}
 
-CMD ["npx", "tsx", "src/demo.ts", "--web", "--auto", "--rounds", "9999", "--delay", "120"]
+CMD ["npx", "tsx", "src/demo.ts", "--web", "--idle", "--delay", "120"]

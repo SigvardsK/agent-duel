@@ -88,6 +88,8 @@ export interface DuelState {
   phase: string;
   round?: number;
   history?: HistoryEntry[];
+  lastTxSignature?: string;
+  txSignatures?: string[];
 }
 
 // ─── Render ──────────────────────────────────────────────────
