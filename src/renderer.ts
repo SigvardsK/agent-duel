@@ -68,6 +68,15 @@ export interface SeriesState {
   gameNumber: number;
 }
 
+export interface HistoryEntry {
+  round: number;
+  games: { winner: string | null; moves: number }[];
+  seriesWinner: string | null;  // "X", "O", or null for draw
+  scoreX: number;
+  scoreO: number;
+  timestamp: number;  // Date.now()
+}
+
 export interface DuelState {
   walletX?: WalletDisplay;
   walletO?: WalletDisplay;
@@ -78,6 +87,7 @@ export interface DuelState {
   status: string;
   phase: string;
   round?: number;
+  history?: HistoryEntry[];
 }
 
 // ─── Render ──────────────────────────────────────────────────

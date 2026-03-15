@@ -361,6 +361,37 @@ body::after{
 }
 .balance-display .bal-val{color:var(--yellow);font-weight:700}
 
+/* ── Match History ─────────────────────────────────── */
+
+.history{
+  border:1px solid var(--border);padding:14px;margin-bottom:12px;font-size:12px;
+  background:var(--bg-card);border-radius:6px;
+}
+.history h3{
+  font-family:var(--font-display);font-size:12px;letter-spacing:3px;color:var(--dim);
+  margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:8px;
+}
+.history-empty{color:var(--dim);text-align:center;padding:12px 0;font-style:italic}
+.history-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 0;border-bottom:1px solid rgba(26,26,58,0.3);
+  font-family:var(--font-mono);font-size:12px;
+}
+.history-row:last-child{border-bottom:none}
+.history-round{color:var(--dim);min-width:36px}
+.history-result{font-weight:700;flex:1;margin:0 10px}
+.history-result .winner-name{font-family:var(--font-display);letter-spacing:1px}
+.history-result .winner-name.neo{color:var(--cyan)}
+.history-result .winner-name.smith{color:var(--red)}
+.history-result .score-text{color:var(--dim);margin:0 4px}
+.history-result .loser-name{color:var(--dim)}
+.history-games{display:flex;gap:4px;align-items:center;margin-right:10px}
+.history-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.history-dot.neo{background:var(--cyan);box-shadow:0 0 4px rgba(0,255,255,0.4)}
+.history-dot.smith{background:var(--red);box-shadow:0 0 4px rgba(255,34,68,0.4)}
+.history-dot.draw{background:var(--dim)}
+.history-time{color:var(--dim);min-width:56px;text-align:right;font-size:11px}
+
 /* ── Responsive ─────────────────────────────────────── */
 
 @media(max-width:768px){
@@ -409,13 +440,13 @@ body::after{
   <div class="fight-card" id="fight-card">
     <div class="fight-card-inner">
       <div class="fight-panel x" id="fight-x">
-        <div class="agent-name">AGENT X</div>
+        <div class="agent-name">AGENT NEO</div>
         <div class="agent-balance">--</div>
         <div class="agent-record">0 W</div>
       </div>
       <div class="vs-divider">VS</div>
       <div class="fight-panel o" id="fight-o">
-        <div class="agent-name">AGENT O</div>
+        <div class="agent-name">AGENT SMITH</div>
         <div class="agent-balance">--</div>
         <div class="agent-record">0 W</div>
       </div>
@@ -424,8 +455,8 @@ body::after{
   </div>
 
   <div class="wallets" id="wallets">
-    <div class="wallet x"><div class="name">AGENT X</div><div class="bal">--</div><div class="key">--</div></div>
-    <div class="wallet o"><div class="name">AGENT O</div><div class="bal">--</div><div class="key">--</div></div>
+    <div class="wallet x"><div class="name">AGENT NEO</div><div class="bal">--</div><div class="key">--</div></div>
+    <div class="wallet o"><div class="name">AGENT SMITH</div><div class="bal">--</div><div class="key">--</div></div>
   </div>
 
   <div class="score-pot" id="score-pot">
@@ -449,11 +480,16 @@ body::after{
       <input class="amount-input" id="bet-amount" type="number" min="0.10" max="5.00" step="0.10" value="1.00">
     </div>
     <div class="bet-buttons">
-      <button class="bet-btn x" id="btn-bet-x">BET ON X</button>
-      <button class="bet-btn o" id="btn-bet-o">BET ON O</button>
+      <button class="bet-btn x" id="btn-bet-x">BET ON NEO</button>
+      <button class="bet-btn o" id="btn-bet-o">BET ON SMITH</button>
     </div>
     <div class="bet-confirm" id="bet-confirm"></div>
     <div class="balance-display">Balance: <span class="bal-val" id="local-balance">10.00</span> play SOL</div>
+  </div>
+
+  <div class="history" id="history" style="display:none">
+    <h3>MATCH HISTORY</h3>
+    <div id="history-content"><div class="history-empty">No matches yet</div></div>
   </div>
 </div>
 
@@ -591,6 +627,9 @@ body::after{
     // Market
     renderMarket(s);
 
+    // History
+    renderHistory(s);
+
     // Betting visibility
     var newPhase = s.phase;
     if (newPhase === 'betting') {
@@ -616,8 +655,8 @@ body::after{
     if (s.phase === 'betting') {
       el.classList.add('visible');
       var series = s.series || { scoreX: 0, scoreO: 0 };
-      var xName = s.walletX ? esc(s.walletX.name) : 'AGENT X';
-      var oName = s.walletO ? esc(s.walletO.name) : 'AGENT O';
+      var xName = s.walletX ? esc(s.walletX.name) : 'AGENT NEO';
+      var oName = s.walletO ? esc(s.walletO.name) : 'AGENT SMITH';
       var xBal = s.walletX ? s.walletX.balance.toFixed(2) + ' SOL' : '--';
       var oBal = s.walletO ? s.walletO.balance.toFixed(2) + ' SOL' : '--';
 
@@ -645,8 +684,8 @@ body::after{
         '<div class="wallet o' + oActive + '"><div class="name">' + esc(s.walletO.name) + '</div><div class="bal">' + s.walletO.balance.toFixed(2) + ' SOL</div><div class="key">' + truncKey(s.walletO.pubkey) + '</div></div>';
     } else {
       el.innerHTML =
-        '<div class="wallet x"><div class="name">AGENT X</div><div class="bal">Waiting...</div><div class="key">--</div></div>' +
-        '<div class="wallet o"><div class="name">AGENT O</div><div class="bal">Waiting...</div><div class="key">--</div></div>';
+        '<div class="wallet x"><div class="name">AGENT NEO</div><div class="bal">Waiting...</div><div class="key">--</div></div>' +
+        '<div class="wallet o"><div class="name">AGENT SMITH</div><div class="bal">Waiting...</div><div class="key">--</div></div>';
     }
   }
 
@@ -765,7 +804,7 @@ body::after{
 
     // Odds bar visualization
     html += '<div class="odds-bar-wrap">';
-    html += '<div class="odds-bar-labels"><span class="x-label">X ' + xPct + '%</span><span class="o-label">' + oPct + '% O</span></div>';
+    html += '<div class="odds-bar-labels"><span class="x-label">Neo ' + xPct + '%</span><span class="o-label">' + oPct + '% Smith</span></div>';
     html += '<div class="odds-bar"><div class="x-fill" style="width:' + xPct + '%"></div><div class="o-fill" style="width:' + oPct + '%"></div></div>';
     html += '</div>';
 
@@ -776,6 +815,63 @@ body::after{
     }
 
     el.innerHTML = html;
+  }
+
+  function timeAgo(ts) {
+    var diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return diff + 's ago';
+    var mins = Math.floor(diff / 60);
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    return hrs + 'h ago';
+  }
+
+  function renderHistory(s) {
+    var el = $('history');
+    var content = $('history-content');
+    if (!s.history || s.history.length === 0) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
+
+    var html = '';
+    // Show most recent first
+    for (var i = s.history.length - 1; i >= 0; i--) {
+      var h = s.history[i];
+      html += '<div class="history-row">';
+      html += '<span class="history-round">R' + h.round + '</span>';
+
+      // Result text
+      html += '<span class="history-result">';
+      if (h.seriesWinner === 'X') {
+        html += '<span class="winner-name neo">Neo</span>';
+        html += '<span class="score-text">' + h.scoreX + '-' + h.scoreO + '</span>';
+        html += '<span class="loser-name">Smith</span>';
+      } else if (h.seriesWinner === 'O') {
+        html += '<span class="winner-name smith">Smith</span>';
+        html += '<span class="score-text">' + h.scoreO + '-' + h.scoreX + '</span>';
+        html += '<span class="loser-name">Neo</span>';
+      } else {
+        html += '<span class="loser-name">Draw ' + h.scoreX + '-' + h.scoreO + '</span>';
+      }
+      html += '</span>';
+
+      // Game dots
+      html += '<span class="history-games">';
+      for (var g = 0; g < h.games.length; g++) {
+        var gw = h.games[g].winner;
+        var dotCls = gw === 'X' ? 'neo' : gw === 'O' ? 'smith' : 'draw';
+        html += '<span class="history-dot ' + dotCls + '" title="Game ' + (g+1) + ': ' + (gw || 'draw') + ' (' + h.games[g].moves + ' moves)"></span>';
+      }
+      html += '</span>';
+
+      // Time ago
+      html += '<span class="history-time">' + timeAgo(h.timestamp) + '</span>';
+      html += '</div>';
+    }
+
+    content.innerHTML = html;
   }
 
   // Payout Tracking

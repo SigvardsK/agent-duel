@@ -6,7 +6,7 @@ import { createGame, Player } from "./game.js";
 import { agentMove } from "./agents.js";
 import { createMarket, placeBet, resolveMarket, Market, Payout, DEFAULT_RAKE_RATE } from "./market.js";
 import {
-  DuelState, renderFrame, cleanup, sleep, startThinking,
+  DuelState, HistoryEntry, renderFrame, cleanup, sleep, startThinking,
   getFrameHeight, colorPlayer,
 } from "./renderer.js";
 import { createServer, DuelServer } from "./server.js";
@@ -221,14 +221,20 @@ async function runBettingPhase(state: DuelState, auto: boolean): Promise<Market>
 
 // ─── Series Play ─────────────────────────────────────────────
 
+interface SeriesResult {
+  winner: Player | "draw";
+  gamesLog: { winner: string | null; moves: number }[];
+}
+
 async function runSeries(
   state: DuelState,
   connection: Connection,
   walletX: Wallet,
   walletO: Wallet,
-): Promise<Player | "draw"> {
+): Promise<SeriesResult> {
   state.series = { scoreX: 0, scoreO: 0, gameNumber: 0 };
   let gamesPlayed = 0;
+  const gamesLog: { winner: string | null; moves: number }[] = [];
 
   while (state.series.scoreX < WINS_NEEDED && state.series.scoreO < WINS_NEEDED && gamesPlayed < MAX_GAMES) {
     gamesPlayed++;
@@ -255,14 +261,14 @@ async function runSeries(
     state.phase = "playing";
     const firstPlayer: Player = gamesPlayed % 2 === 1 ? "X" : "O";
     state.game = createGame(firstPlayer);
-    const firstName = firstPlayer === "X" ? "Agent X" : "Agent O";
+    const firstName = firstPlayer === "X" ? "Agent Neo" : "Agent Smith";
     state.status = `Game ${gamesPlayed} — ${firstName} goes first`;
     render(state);
     await sleep(600);
 
     while (state.game.winner === null) {
       const player = state.game.currentPlayer;
-      const agentName = player === "X" ? "Agent X" : "Agent O";
+      const agentName = player === "X" ? "Agent Neo" : "Agent Smith";
       const moveNum = state.game.moveCount + 1;
 
       const stopThinking = startThinking(state, `Game ${gamesPlayed} — ${agentName}`, render);
@@ -283,6 +289,7 @@ async function runSeries(
       state.walletX!.balance += STAKE;
       state.walletO!.balance += STAKE;
       state.pot = 0;
+      gamesLog.push({ winner: null, moves: state.game.moveCount });
       state.status = `Game ${gamesPlayed} drawn — replaying...`;
       render(state);
       await sleep(2000);
@@ -307,21 +314,26 @@ async function runSeries(
     state.walletO!.balance = await getBalance(connection, walletO);
     state.pot = 0;
 
+    gamesLog.push({ winner: gameWinner, moves: state.game.moveCount });
+
     if (gameWinner === "X") state.series.scoreX++;
     else state.series.scoreO++;
 
-    const winnerName = gameWinner === "X" ? "Agent X" : "Agent O";
+    const winnerName = gameWinner === "X" ? "Agent Neo" : "Agent Smith";
     state.status = `${winnerName} wins game ${gamesPlayed}!`;
     render(state);
     await sleep(2000);
   }
 
-  if (state.series.scoreX >= WINS_NEEDED) return "X";
-  if (state.series.scoreO >= WINS_NEEDED) return "O";
+  let seriesWinner: Player | "draw";
+  if (state.series.scoreX >= WINS_NEEDED) seriesWinner = "X";
+  else if (state.series.scoreO >= WINS_NEEDED) seriesWinner = "O";
   // Max games reached — whoever has more wins takes the series
-  if (state.series.scoreX > state.series.scoreO) return "X";
-  if (state.series.scoreO > state.series.scoreX) return "O";
-  return "draw"; // truly tied scores only (e.g., 0-0 or 1-1)
+  else if (state.series.scoreX > state.series.scoreO) seriesWinner = "X";
+  else if (state.series.scoreO > state.series.scoreX) seriesWinner = "O";
+  else seriesWinner = "draw"; // truly tied scores only (e.g., 0-0 or 1-1)
+
+  return { winner: seriesWinner, gamesLog };
 }
 
 // ─── Round (betting + series + resolution) ───────────────────
@@ -340,7 +352,8 @@ async function runRound(
   const market = await runBettingPhase(state, auto);
 
   // Series
-  const seriesWinner = await runSeries(state, connection, walletX, walletO);
+  const seriesResult = await runSeries(state, connection, walletX, walletO);
+  const seriesWinner = seriesResult.winner;
 
   state.phase = "outcome";
 
@@ -360,10 +373,21 @@ async function runRound(
       render(state);
       await sleep(2500);
     }
+
+    // Record history
+    state.history!.push({
+      round: roundNum,
+      games: seriesResult.gamesLog,
+      seriesWinner: null,
+      scoreX: state.series!.scoreX,
+      scoreO: state.series!.scoreO,
+      timestamp: Date.now(),
+    });
+    if (state.history!.length > 20) state.history!.shift();
     return;
   }
 
-  const seriesWinnerName = seriesWinner === "X" ? "Agent X" : "Agent O";
+  const seriesWinnerName = seriesWinner === "X" ? "Agent Neo" : "Agent Smith";
   const winColor = colorPlayer(seriesWinner);
 
   state.status = `${winColor(seriesWinnerName)} wins the series!`;
@@ -391,6 +415,17 @@ async function runRound(
     render(state);
     await sleep(2500);
   }
+
+  // Record history
+  state.history!.push({
+    round: roundNum,
+    games: seriesResult.gamesLog,
+    seriesWinner,
+    scoreX: state.series!.scoreX,
+    scoreO: state.series!.scoreO,
+    timestamp: Date.now(),
+  });
+  if (state.history!.length > 20) state.history!.shift();
 }
 
 // ─── Main Flow ───────────────────────────────────────────────
@@ -415,6 +450,7 @@ async function run() {
     pot: 0,
     status: web ? `Initializing... (web UI on port ${port})` : "Initializing...",
     phase: "init",
+    history: [],
   };
 
   process.on("exit", () => { server?.close(); cleanup(); });
@@ -427,11 +463,11 @@ async function run() {
   state.phase = "wallets";
   state.status = "Creating wallets...";
 
-  const walletX = createWallet("Agent X");
-  const walletO = createWallet("Agent O");
+  const walletX = createWallet("Agent Neo");
+  const walletO = createWallet("Agent Smith");
 
-  state.walletX = { name: "Agent X", pubkey: walletX.keypair.publicKey.toBase58(), balance: 0 };
-  state.walletO = { name: "Agent O", pubkey: walletO.keypair.publicKey.toBase58(), balance: 0 };
+  state.walletX = { name: "Agent Neo", pubkey: walletX.keypair.publicKey.toBase58(), balance: 0 };
+  state.walletO = { name: "Agent Smith", pubkey: walletO.keypair.publicKey.toBase58(), balance: 0 };
   state.status = "Wallets created";
   render(state);
   await sleep(1000);
@@ -502,13 +538,13 @@ async function run() {
         if (balX < MIN_BALANCE) {
           const ok = treasury ? await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT)
                               : await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
-          if (!ok) console.warn("[wallet] Top-up failed for Agent X");
+          if (!ok) console.warn("[wallet] Top-up failed for Agent Neo");
           state.walletX!.balance = await getBalance(connection, walletX);
         }
         if (balO < MIN_BALANCE) {
           const ok = treasury ? await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT)
                               : await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
-          if (!ok) console.warn("[wallet] Top-up failed for Agent O");
+          if (!ok) console.warn("[wallet] Top-up failed for Agent Smith");
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";

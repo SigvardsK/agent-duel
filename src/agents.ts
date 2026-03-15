@@ -46,9 +46,9 @@ interface AgentConfig {
 
 const AGENTS: Record<Player, AgentConfig> = {
   X: {
-    name: "Agent X (Aggressive)",
+    name: "Agent Neo (Aggressive)",
     player: "X",
-    personality: `You are Agent X in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+    personality: `You are Agent Neo in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
 
 Play to WIN. Your strategy:
 1. Read the board carefully before every move
@@ -63,9 +63,9 @@ Play to WIN. Your strategy:
 You play as X. Think carefully — every move matters when money is at stake.`,
   },
   O: {
-    name: "Agent O (Defensive)",
+    name: "Agent Smith (Defensive)",
     player: "O",
-    personality: `You are Agent O in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
+    personality: `You are Agent Smith in a high-stakes Connect Four tournament with real SOL cryptocurrency on the line. You win 0.5 SOL for each game victory — losing costs you real money.
 
 Play to WIN. Your strategy:
 1. Read the board carefully before every move
