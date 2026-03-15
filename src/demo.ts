@@ -474,7 +474,7 @@ async function run() {
 
   // Fund wallets — treasury transfer first, airdrop as fallback
   state.phase = "funding";
-  const FUND_AMOUNT = 0.4;
+  const FUND_AMOUNT = 0.2;
   const treasury = loadTreasury();
 
   if (treasury) {
