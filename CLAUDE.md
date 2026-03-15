@@ -4,7 +4,7 @@
 
 Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market with 5% house rake. Terminal TUI + web spectator UI with play-money betting.
 
-**Status:** Phase 3 complete — Web UI + WebSocket streaming + play-money betting. Next: Phase 4 (content + distribution).
+**Status:** Phase 4 in progress — Content + distribution. Phase 3 complete (Web UI + WebSocket streaming + play-money betting).
 **Priority:** Build in gaps between P0 work.
 
 ## Stack
@@ -44,8 +44,14 @@ YOU (Main Claude) = Orchestrator
          ├── Chain Specialist (.claude/agents/chain-specialist.md)
          │   └── Wallet ops, transactions, key management, deployment
          │
-         └── Tester (.claude/agents/tester.md)
-             └── Unit tests, integration tests, program tests, simulations
+         ├── Tester (.claude/agents/tester.md)
+         │   └── Unit tests, integration tests, program tests, simulations
+         │
+         ├── Content Producer (.claude/agents/content-producer.md)
+         │   └── Social copy, launch content, video scripts, community posts
+         │
+         └── Visual Producer (.claude/agents/visual-producer.md)
+             └── Screenshots, GIFs, OG images, favicons, promotional visuals
 ```
 
 ### Orchestration Protocol (OODA Loop)
@@ -113,6 +119,10 @@ Task tool:
 | Program tests (Anchor) | Tester | Program Developer (context) |
 | Integration tests | Tester | Chain Specialist (infra) |
 | Security audit | Tester | All (review) |
+| Launch content / social posts | Content Producer | — |
+| Video content / scripts | Content Producer | (uses content-templates skill) |
+| Screenshots / GIFs / OG images | Visual Producer | — |
+| Favicons / visual assets | Visual Producer | — |
 | End-to-end feature | Orchestrator coordinates | Multiple agents sequentially |
 
 ### Key Handoff Flow
@@ -141,6 +151,8 @@ Program Developer → (IDL + PDA docs) → Chain Specialist → (TS client API) 
 | `src/chain/` | Chain Specialist | Connection, tx builders, PDA helpers |
 | `src/keys/` | Chain Specialist | Key management |
 | `deploy/` | Chain Specialist | Deployment scripts |
+| `content/` | Content Producer | Launch content, drafts, published posts |
+| `assets/` | Visual Producer | OG images, favicons, promotional visuals |
 | `tests/` | Tester | All test code |
 | `vitest.config.ts` | Tester | Test configuration |
 
@@ -223,6 +235,7 @@ npx vitest --watch     # Watch mode
 - `.claude/skills/anchor-guide/SKILL.md` — Anchor framework conventions, escrow pattern
 - `.claude/skills/agent-tool-use/SKILL.md` — Claude tool-use patterns for game agents
 - `.claude/skills/key-management/SKILL.md` — Wallet security by environment
+- `.claude/skills/content-templates/SKILL.md` — Launch content templates for Twitter, HN, Reddit, video
 
 ## Related
 

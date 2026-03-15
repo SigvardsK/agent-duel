@@ -84,7 +84,32 @@ export interface DuelServer {
 }
 
 export function createServer(port: number): DuelServer {
-  const httpServer = createHttpServer(serveStatic);
+  let latestState: DuelState | null = null;
+
+  const httpServer = createHttpServer((req, res) => {
+    if (req.method === "GET" && req.url === "/health") {
+      const body = JSON.stringify({
+        status: "ok",
+        spectators: wss.clients.size,
+        uptime: process.uptime(),
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(body);
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/api/state") {
+      const body = latestState !== null
+        ? JSON.stringify(latestState)
+        : JSON.stringify(null);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(body);
+      return;
+    }
+
+    serveStatic(req, res);
+  });
+
   const wss = new WebSocketServer({ server: httpServer });
 
   const betHandlers: Array<(bet: { name: string; side: string; amount: number }) => void> = [];
@@ -108,6 +133,7 @@ export function createServer(port: number): DuelServer {
 
   return {
     broadcast(state: DuelState): void {
+      latestState = state;
       const payload = JSON.stringify({
         ...state,
         spectatorCount: wss.clients.size,

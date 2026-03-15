@@ -1,7 +1,7 @@
 import { Connection } from "@solana/web3.js";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { createWallet, fundWallet, getBalance, transferSOL, Wallet } from "./wallet.js";
+import { createWallet, fundWalletWithRetry, getBalance, transferSOL, Wallet } from "./wallet.js";
 import { createGame, Player } from "./game.js";
 import { agentMove } from "./agents.js";
 import { createMarket, placeBet, resolveMarket, Market, Payout, DEFAULT_RAKE_RATE } from "./market.js";
@@ -17,15 +17,18 @@ const WINS_NEEDED = 2;
 const MAX_GAMES = 5;
 const MIN_BALANCE = 0.6; // SOL — stop if either wallet drops below this (can't afford stake + fees)
 const DEFAULT_MAX_ROUNDS = 50;
-const DEFAULT_WEB_PORT = 8080;
+const DEFAULT_WEB_PORT = parseInt(process.env.PORT || "8080");
 const WEB_BETTING_WINDOW_SECS = 15;
 
-function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: number } {
+const DEFAULT_DELAY_SECS = 120;
+
+function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: number; delay: number } {
   const args = process.argv.slice(2);
   let maxRounds = DEFAULT_MAX_ROUNDS;
   let auto = false;
   let web = false;
   let port = DEFAULT_WEB_PORT;
+  let delay = DEFAULT_DELAY_SECS;
 
   const roundsIdx = args.indexOf("--rounds");
   if (roundsIdx !== -1 && args[roundsIdx + 1]) {
@@ -35,6 +38,10 @@ function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: nu
   if (portIdx !== -1 && args[portIdx + 1]) {
     port = parseInt(args[portIdx + 1], 10) || DEFAULT_WEB_PORT;
   }
+  const delayIdx = args.indexOf("--delay");
+  if (delayIdx !== -1 && args[delayIdx + 1]) {
+    delay = parseInt(args[delayIdx + 1], 10) || DEFAULT_DELAY_SECS;
+  }
   if (args.includes("--auto")) {
     auto = true;
   }
@@ -42,7 +49,7 @@ function parseArgs(): { maxRounds: number; auto: boolean; web: boolean; port: nu
     web = true;
   }
 
-  return { maxRounds, auto, web, port };
+  return { maxRounds, auto, web, port, delay };
 }
 
 // ─── Broadcast-aware render wrapper ─────────────────────────
@@ -54,9 +61,8 @@ function render(state: DuelState): void {
   server?.broadcast(state);
 }
 
-// Suppress module console.logs — we own the display
+// Console suppression — deferred to main() so web mode can keep stdout
 const _log = console.log;
-console.log = (..._args: unknown[]) => {};
 function restoreConsole() { console.log = _log; }
 
 async function promptUser(state: DuelState, question: string): Promise<string> {
@@ -386,7 +392,14 @@ async function runRound(
 // ─── Main Flow ───────────────────────────────────────────────
 
 async function run() {
-  const { maxRounds, auto, web, port } = parseArgs();
+  const { maxRounds, auto, web, port, delay } = parseArgs();
+
+  // In web mode, keep console.log for production logging (Railway captures stdout).
+  // In TUI-only mode, suppress console.log — the renderer owns the display.
+  if (!web) {
+    console.log = (..._args: unknown[]) => {};
+  }
+
   const connection = new Connection(RPC_URL, "confirmed");
 
   // Start web server if requested
@@ -424,12 +437,12 @@ async function run() {
   state.status = "Requesting airdrops...";
   render(state);
 
-  await fundWallet(connection, walletX, 2);
+  await fundWalletWithRetry(connection, walletX, 10);
   state.walletX.balance = await getBalance(connection, walletX);
   render(state);
   await sleep(400);
 
-  await fundWallet(connection, walletO, 2);
+  await fundWalletWithRetry(connection, walletO, 10);
   state.walletO.balance = await getBalance(connection, walletO);
   state.status = "Both players funded";
   render(state);
@@ -455,11 +468,11 @@ async function run() {
         state.status = "Low balance — requesting airdrop...";
         render(state);
         if (balX < MIN_BALANCE) {
-          await fundWallet(connection, walletX, 2);
+          await fundWalletWithRetry(connection, walletX, 10);
           state.walletX!.balance = await getBalance(connection, walletX);
         }
         if (balO < MIN_BALANCE) {
-          await fundWallet(connection, walletO, 2);
+          await fundWalletWithRetry(connection, walletO, 10);
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";
@@ -480,9 +493,9 @@ async function run() {
       state.market = undefined;
       state.game = undefined;
       state.pot = 0;
-      state.status = `Round ${round} complete — next round in 5s...`;
+      state.status = `Round ${round} complete — next round in ${delay}s...`;
       render(state);
-      await sleep(5000);
+      await sleep(delay * 1000);
     } else {
       // Ask user
       state.status = `Round ${round}/${maxRounds} complete`;

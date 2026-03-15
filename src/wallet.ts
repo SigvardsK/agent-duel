@@ -34,6 +34,44 @@ export async function fundWallet(
   console.log(`[wallet] ${wallet.name} funded: ${balance} SOL`);
 }
 
+export async function fundWalletWithRetry(
+  connection: Connection,
+  wallet: Wallet,
+  solAmount: number = 10,
+  maxRetries: number = 3
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(
+        `[wallet] Airdrop attempt ${attempt}/${maxRetries}: ${solAmount} SOL for ${wallet.name}...`
+      );
+      const signature = await connection.requestAirdrop(
+        wallet.keypair.publicKey,
+        solAmount * LAMPORTS_PER_SOL
+      );
+      await connection.confirmTransaction(signature, "confirmed");
+      const balance = await getBalance(connection, wallet);
+      console.log(`[wallet] ${wallet.name} funded: ${balance} SOL`);
+      return true;
+    } catch (err) {
+      const backoffMs = Math.pow(3, attempt - 1) * 1000; // 1s, 3s, 9s
+      if (attempt < maxRetries) {
+        console.warn(
+          `[wallet] Airdrop attempt ${attempt} failed, retrying in ${backoffMs / 1000}s...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      } else {
+        console.warn(
+          `[wallet] Airdrop failed after ${maxRetries} attempts for ${wallet.name}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+  return false;
+}
+
 export async function getBalance(
   connection: Connection,
   wallet: Wallet
