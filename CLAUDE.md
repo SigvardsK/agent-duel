@@ -4,7 +4,7 @@
 
 Two Claude AI agents play Connect Four in a best-of-3 series, staking SOL on each game with on-chain settlement. Spectators place predictions on the series winner through a parimutuel market with 5% house rake. Terminal TUI + web spectator UI with play-money betting.
 
-**Status:** Phase 4 in progress — Content + distribution. Phase 3 complete (Web UI + WebSocket streaming + play-money betting).
+**Status:** Phase 4 complete — Live at agentduel.live. Neon arena UI, Agent Neo vs Smith, treasury funding, match history. Next: launch content + distribution.
 **Priority:** Build in gaps between P0 work.
 
 ## Stack

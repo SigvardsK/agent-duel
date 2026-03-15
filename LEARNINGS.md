@@ -286,4 +286,72 @@ Serving the web client and WebSocket from the same port (default 8080) was the r
 
 ---
 
+## Phase 4 — Deployment, UI Redesign, and Team Expansion (2026-03-15)
+
+### What Was Built
+
+| Component | Description |
+|-----------|-------------|
+| **Railway deployment** | Dockerfile, `$PORT` env var, auto-deploy from main branch |
+| **Cloudflare DNS** | agentduel.live domain, WebSocket proxy, SSL |
+| **Treasury wallet** | Pre-funded DevNet wallet, transfers to game wallets (bypasses faucet rate limits) |
+| **Neon Arena UI** | Full redesign: Orbitron headings, CSS circles, glow effects, fight card, odds bar, win celebrations |
+| **Agent Neo vs Smith** | Renamed from Agent X/O — themed personalities |
+| **Match history** | Last 20 series results with per-game breakdown, broadcast to web UI |
+| **Winning line highlight** | `checkWinner()` returns cell positions, web UI animates winning four |
+| **Health + state API** | `/health` and `/api/state` endpoints for monitoring |
+| **Crash-proof settlement** | `transferSOL` wrapped in try/catch, airdrop retry with backoff, auto-restart |
+| **Cost control** | `--delay` flag for inter-round pause, treasury approach reduces airdrop dependency |
+| **GTM team** | Content Producer + Visual Producer agents, content templates skill |
+
+### Time Summary
+
+| Task | Estimated | Actual |
+|------|-----------|--------|
+| Deployment infra (WS1) | 2-3h | ~1.5h |
+| UI redesign (WS2) | 4-6h | ~2h (agent-assisted) |
+| Team expansion (WS3) | 2h | ~1h |
+| DevNet debugging (airdrop, treasury) | — | ~1.5h |
+| Docs + screenshot | — | ~30min |
+| **Total** | ~10h | **~6.5h** |
+
+### Key Findings
+
+#### DevNet Faucet Is Not Production-Ready
+- Programmatic `requestAirdrop` gets 429 rate-limited immediately from cloud IPs (Railway)
+- Even 2 SOL requests hit daily per-IP limits
+- **Solution:** Treasury wallet pattern — pre-fund via web faucet, transfer to game wallets
+- Web faucet at faucet.solana.com limits to 2 airdrops per 8 hours
+- **Lesson:** For any 24/7 DevNet app, budget a treasury approach from day 1
+
+#### Railway + Cloudflare = Smooth Stack
+- Railway auto-detects Dockerfile, injects `$PORT`, auto-deploys from GitHub push
+- Cloudflare WebSocket proxying works out of the box (no special config)
+- DNS propagation was the only friction (ISP cache, ~30min)
+- Total deploy time from first push to working site: ~20 minutes (excluding DNS)
+
+#### AI-Assisted UI Redesign Is Fast
+- 800-line single-file HTML rewrite in one agent invocation (~15 min generation time)
+- Zero-dependency constraint (no React, no bundler) paradoxically speeds up iteration
+- Google Fonts (Orbitron) is the only external dependency — acceptable tradeoff for visual impact
+- Fight card, odds bar, win celebration — all CSS-only animations
+
+#### Cost Reality vs Estimates
+- LEARNINGS.md Phase 2 estimated ~$58/month for Haiku API
+- Actual 24/7 at 2-min delay: ~$420/month (288 rounds × $0.02 × 30 days)
+- At 5-min delay: ~$173/month — the `--delay` flag is essential cost control
+- Treasury approach eliminates airdrop costs but requires periodic manual top-up via web faucet
+
+### Updated Confidence Levels
+
+| Metric | Before | After | Classification |
+|--------|--------|-------|----------------|
+| 24/7 autonomous deployment | 0.70 | **0.90** | Observed — running on Railway with self-healing |
+| DevNet reliability for production | 0.50 | **0.30** | Observed — faucet rate limits are a real problem |
+| Treasury wallet pattern | — | **0.95** | Observed — reliable, simple, production-ready |
+| Web UI as spectator product | 0.60 | **0.85** | Observed — neon arena aesthetic works, responsive |
+| AI-assisted UI development speed | 0.80 | **0.95** | Observed — 800-line rewrite in single agent call |
+
+---
+
 > **Note:** Structured learning record at `.claude/learning-records/LR-2026-001-day1-spike.md`
