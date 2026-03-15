@@ -1,7 +1,7 @@
 import { Connection } from "@solana/web3.js";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { createWallet, fundWalletWithRetry, getBalance, transferSOL, Wallet } from "./wallet.js";
+import { createWallet, fundWalletWithRetry, fundFromTreasury, loadTreasury, getBalance, transferSOL, Wallet } from "./wallet.js";
 import { createGame, Player } from "./game.js";
 import { agentMove } from "./agents.js";
 import { createMarket, placeBet, resolveMarket, Market, Payout, DEFAULT_RAKE_RATE } from "./market.js";
@@ -436,36 +436,44 @@ async function run() {
   render(state);
   await sleep(1000);
 
-  // Fund wallets
+  // Fund wallets — treasury transfer first, airdrop as fallback
   state.phase = "funding";
-  state.status = "Requesting airdrops...";
-  render(state);
+  const FUND_AMOUNT = 2;
+  const treasury = loadTreasury();
 
-  const FUND_AMOUNT = 2; // DevNet faucet limits to ~2 SOL per request
-  const fundedX = await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
-  state.walletX.balance = await getBalance(connection, walletX);
-  render(state);
-  await sleep(400);
-
-  const fundedO = await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
-  state.walletO.balance = await getBalance(connection, walletO);
-
-  if (!fundedX || !fundedO) {
-    state.status = "Airdrop failed — retrying in 30s...";
+  if (treasury) {
+    state.status = "Funding from treasury...";
     render(state);
-    await sleep(30000);
-    // Retry once more before giving up
-    if (!fundedX) await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
-    if (!fundedO) await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
+    const tBal = await getBalance(connection, treasury);
+    console.log(`[wallet] Treasury balance: ${tBal} SOL`);
+
+    await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT);
     state.walletX.balance = await getBalance(connection, walletX);
+    render(state);
+    await sleep(400);
+
+    await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT);
     state.walletO.balance = await getBalance(connection, walletO);
+    render(state);
+  } else {
+    state.status = "Requesting airdrops...";
+    render(state);
+
+    await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
+    state.walletX.balance = await getBalance(connection, walletX);
+    render(state);
+    await sleep(400);
+
+    await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
+    state.walletO.balance = await getBalance(connection, walletO);
+    render(state);
   }
 
   if (state.walletX.balance < STAKE || state.walletO.balance < STAKE) {
-    state.status = "Airdrop failed — restarting in 60s...";
+    state.status = "Funding failed — restarting in 60s...";
     render(state);
     await sleep(60000);
-    return run(); // Restart the entire loop
+    return run();
   }
 
   state.status = "Both players funded";
@@ -489,14 +497,18 @@ async function run() {
     if (balX < MIN_BALANCE || balO < MIN_BALANCE) {
       if (auto) {
         // Auto mode: top up and continue
-        state.status = "Low balance — requesting airdrop...";
+        state.status = "Low balance — topping up...";
         render(state);
         if (balX < MIN_BALANCE) {
-          await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
+          const ok = treasury ? await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT)
+                              : await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
+          if (!ok) console.warn("[wallet] Top-up failed for Agent X");
           state.walletX!.balance = await getBalance(connection, walletX);
         }
         if (balO < MIN_BALANCE) {
-          await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
+          const ok = treasury ? await fundFromTreasury(connection, treasury, walletO, FUND_AMOUNT)
+                              : await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
+          if (!ok) console.warn("[wallet] Top-up failed for Agent O");
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";

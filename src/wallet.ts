@@ -103,6 +103,48 @@ export async function transferSOL(
   return signature;
 }
 
+/**
+ * Load a treasury wallet from TREASURY_PRIVATE_KEY env var (base64-encoded secret key).
+ * Used to fund game wallets without relying on the DevNet faucet.
+ */
+export function loadTreasury(): Wallet | null {
+  const key = process.env.TREASURY_PRIVATE_KEY;
+  if (!key) return null;
+  try {
+    const secretKey = Buffer.from(key, "base64");
+    const keypair = Keypair.fromSecretKey(secretKey);
+    console.log(`[wallet] Treasury loaded: ${keypair.publicKey.toBase58()}`);
+    return { keypair, name: "Treasury" };
+  } catch (err) {
+    console.warn(`[wallet] Failed to load treasury: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+/**
+ * Fund a wallet from the treasury via transfer, or fall back to airdrop.
+ * Treasury approach avoids DevNet faucet rate limits.
+ */
+export async function fundFromTreasury(
+  connection: Connection,
+  treasury: Wallet,
+  target: Wallet,
+  solAmount: number,
+): Promise<boolean> {
+  try {
+    const treasuryBalance = await getBalance(connection, treasury);
+    if (treasuryBalance < solAmount + 0.01) { // 0.01 buffer for tx fees
+      console.warn(`[wallet] Treasury low: ${treasuryBalance} SOL (need ${solAmount})`);
+      return false;
+    }
+    await transferSOL(connection, treasury, target, solAmount);
+    return true;
+  } catch (err) {
+    console.warn(`[wallet] Treasury transfer failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
 export async function printBalances(
   connection: Connection,
   wallets: Wallet[]
