@@ -222,4 +222,68 @@ The Day 1 architecture decision to keep game logic pure and separate from settle
 
 ---
 
+## Phase 3 — Web Spectator UI + WebSocket Streaming (2026-03-14)
+
+### What Was Built
+
+| Component | Description |
+|-----------|-------------|
+| `src/server.ts` | WebSocket + HTTP server — broadcasts DuelState, accepts play-money bets, serves static files. Single port for everything. |
+| `web/index.html` | Single-file web client (440 lines, zero deps, no build step). Dark terminal aesthetic, Connect Four board with drop animations, play-money betting UI. |
+| `src/demo.ts` updates | `--web` and `--port` flags, broadcast wrapper, 15-second betting window for web spectators, handler lifecycle management. |
+
+### Red-Team Findings (5 bugs fixed before commit)
+
+| Severity | Issue | Fix |
+|----------|-------|-----|
+| **Critical** | Bet handler memory leak — handlers accumulated across rounds, causing duplicate bets | Added `clearBetHandlers()`, called at start/end of each betting window |
+| **Critical** | Directory traversal via `%2e%2e` URL encoding bypassed `replace(/\.\./g, "")` | Switched to `path.resolve()` + prefix check against `WEB_DIR` |
+| **Medium** | Interactive bet race condition — web bets lost between prompt and market capture | Atomic market snapshot after prompt, handler cleanup |
+| **Medium** | Betting buttons stuck disabled on WebSocket reconnect | Reset `currentPhase` on reconnect so phase change detection re-fires |
+| **Medium** | ANSI injection via bet names in terminal display | `sanitizeName()` strips escape codes + control chars, truncates to 16 chars |
+
+### Subagent Team Efficiency
+
+Used a 2-agent team (backend + frontend) for parallel development:
+- Backend built `server.ts` + `demo.ts` integration
+- Frontend built `web/index.html`
+- Both worked from the shared `DuelState` interface contract
+- Team lead (orchestrator) caught a critical infinite recursion bug in the `render()` wrapper that the backend agent introduced (`render` calling itself instead of `renderFrame`)
+
+**Lesson:** Subagent teams are effective for parallel workstreams with clear interface contracts. But the orchestrator must review integration points — agents working in isolation miss cross-cutting concerns.
+
+### Architecture Decision: Single-Port HTTP + WebSocket
+
+Serving the web client and WebSocket from the same port (default 8080) was the right call. No CORS issues, no separate static file server, user opens one URL and gets everything. The `ws` package's `server` option cleanly upgrades HTTP connections.
+
+---
+
+## Deployment Planning (2026-03-15)
+
+### Recommended: Railway + DevNet
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **Railway + DevNet** (recommended) | Simple deploy, familiar platform (already used for Migrevention), auto-restarts, ~$5/month | DevNet airdrops unreliable — need retry/fallback logic |
+| **Railway (no validator)** | Simplest deploy | Need to mock Solana transfers — loses the blockchain showcase |
+| **Hetzner VPS** | Full control, local validator, most robust | New infra to manage, more setup work |
+
+**Why Railway over Hetzner:** Already on the platform (Migrevention deployed there). No new infrastructure to learn. The Solana test validator can't run on Railway (no persistent background process), but DevNet gives real on-chain transactions visible on Solana Explorer — actually better for demos than a local validator since spectators can verify transactions.
+
+**Why DevNet over mocking:** The blockchain settlement is the technical showcase. "Two AIs gambling on Solana" loses impact if the Solana part is fake. DevNet transactions are real (just test SOL), and Explorer links are shareable proof.
+
+**DevNet Reliability Mitigation:**
+- Retry airdrop up to 3 times with exponential backoff
+- If all retries fail, continue with balance tracking only (game still plays, settlement is deferred)
+- Log airdrop failures for monitoring
+- Consider pre-funding wallets with larger amounts (10 SOL) to reduce airdrop frequency
+
+**Deployment Config:**
+- Dockerfile: Node 22 + `npm install` + `tsx src/demo.ts --web --auto --rounds 999`
+- Environment: `ANTHROPIC_API_KEY`, `SOLANA_RPC_URL=https://api.devnet.solana.com`, `PORT` (Railway assigns)
+- Domain: agentduel.xyz or similar, pointed via Cloudflare (free tier, WebSocket proxy support)
+- Estimated cost: ~$5/month Railway + ~$58/month Haiku API + ~$2/year domain = **~$65/month**
+
+---
+
 > **Note:** Structured learning record at `.claude/learning-records/LR-2026-001-day1-spike.md`
