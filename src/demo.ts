@@ -297,7 +297,11 @@ async function runSeries(
 
     const loser = gameWinner === "X" ? walletO : walletX;
     const winner = gameWinner === "X" ? walletX : walletO;
-    await transferSOL(connection, loser, winner, STAKE);
+    try {
+      await transferSOL(connection, loser, winner, STAKE);
+    } catch (err) {
+      console.warn(`[settlement] Transfer failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     state.walletX!.balance = await getBalance(connection, walletX);
     state.walletO!.balance = await getBalance(connection, walletO);
@@ -437,13 +441,32 @@ async function run() {
   state.status = "Requesting airdrops...";
   render(state);
 
-  await fundWalletWithRetry(connection, walletX, 10);
+  const fundedX = await fundWalletWithRetry(connection, walletX, 10);
   state.walletX.balance = await getBalance(connection, walletX);
   render(state);
   await sleep(400);
 
-  await fundWalletWithRetry(connection, walletO, 10);
+  const fundedO = await fundWalletWithRetry(connection, walletO, 10);
   state.walletO.balance = await getBalance(connection, walletO);
+
+  if (!fundedX || !fundedO) {
+    state.status = "Airdrop failed — retrying in 30s...";
+    render(state);
+    await sleep(30000);
+    // Retry once more before giving up
+    if (!fundedX) await fundWalletWithRetry(connection, walletX, 10);
+    if (!fundedO) await fundWalletWithRetry(connection, walletO, 10);
+    state.walletX.balance = await getBalance(connection, walletX);
+    state.walletO.balance = await getBalance(connection, walletO);
+  }
+
+  if (state.walletX.balance < STAKE || state.walletO.balance < STAKE) {
+    state.status = "Airdrop failed — restarting in 60s...";
+    render(state);
+    await sleep(60000);
+    return run(); // Restart the entire loop
+  }
+
   state.status = "Both players funded";
   render(state);
   await sleep(800);

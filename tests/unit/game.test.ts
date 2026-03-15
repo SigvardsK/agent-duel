@@ -250,6 +250,91 @@ describe("win detection", () => {
   });
 });
 
+describe("winningLine", () => {
+  it("contains the 4 winning cells on horizontal win", () => {
+    let state = createGame();
+    state = dropPiece(state, 0); // X row5 col0
+    state = dropPiece(state, 0); // O row4 col0
+    state = dropPiece(state, 1); // X row5 col1
+    state = dropPiece(state, 1); // O row4 col1
+    state = dropPiece(state, 2); // X row5 col2
+    state = dropPiece(state, 2); // O row4 col2
+    state = dropPiece(state, 3); // X wins row5 col3
+    expect(state.winner).toBe("X");
+    expect(state.winningLine).toBeDefined();
+    expect(state.winningLine).toHaveLength(4);
+    // The winning line should contain all 4 cells on row 5
+    const sorted = [...state.winningLine!].sort((a, b) => a.col - b.col);
+    expect(sorted).toEqual([
+      { row: 5, col: 0 },
+      { row: 5, col: 1 },
+      { row: 5, col: 2 },
+      { row: 5, col: 3 },
+    ]);
+  });
+
+  it("contains the 4 winning cells on vertical win", () => {
+    let state = createGame();
+    state = dropPiece(state, 0); // X
+    state = dropPiece(state, 1); // O
+    state = dropPiece(state, 0); // X
+    state = dropPiece(state, 1); // O
+    state = dropPiece(state, 0); // X
+    state = dropPiece(state, 1); // O
+    state = dropPiece(state, 0); // X wins vertical col0
+    expect(state.winner).toBe("X");
+    expect(state.winningLine).toBeDefined();
+    expect(state.winningLine).toHaveLength(4);
+    const sorted = [...state.winningLine!].sort((a, b) => a.row - b.row);
+    expect(sorted).toEqual([
+      { row: 2, col: 0 },
+      { row: 3, col: 0 },
+      { row: 4, col: 0 },
+      { row: 5, col: 0 },
+    ]);
+  });
+
+  it("contains the 4 winning cells on diagonal win", () => {
+    let state = createGame();
+    // Build diagonal: X at (5,0), (4,1), (3,2), (2,3)
+    state = dropPiece(state, 0); // X row5 col0
+    state = dropPiece(state, 1); // O row5 col1
+    state = dropPiece(state, 1); // X row4 col1
+    state = dropPiece(state, 2); // O row5 col2
+    state = dropPiece(state, 3); // X row5 col3
+    state = dropPiece(state, 2); // O row4 col2
+    state = dropPiece(state, 2); // X row3 col2
+    state = dropPiece(state, 3); // O row4 col3
+    state = dropPiece(state, 4); // X row5 col4
+    state = dropPiece(state, 3); // O row3 col3
+    state = dropPiece(state, 3); // X row2 col3 — diagonal win!
+    expect(state.winner).toBe("X");
+    expect(state.winningLine).toBeDefined();
+    expect(state.winningLine).toHaveLength(4);
+    const sorted = [...state.winningLine!].sort((a, b) => a.row - b.row);
+    expect(sorted).toEqual([
+      { row: 2, col: 3 },
+      { row: 3, col: 2 },
+      { row: 4, col: 1 },
+      { row: 5, col: 0 },
+    ]);
+  });
+
+  it("is undefined on draw", () => {
+    const state = createGame();
+    const drawState = { ...state, winner: "draw" as const, moveCount: 42 };
+    expect(drawState.winningLine).toBeUndefined();
+  });
+
+  it("is undefined during normal play (no winner yet)", () => {
+    let state = createGame();
+    state = dropPiece(state, 0); // X
+    state = dropPiece(state, 1); // O
+    expect(state.winner).toBeNull();
+    expect(state.winningLine).toBeUndefined();
+  });
+});
+
 describe("renderBoard", () => {
   it("shows dots for empty cells", () => {
     const state = createGame();

@@ -9,6 +9,7 @@ export interface GameState {
   board: Cell[][]; // board[row][col], row 0 = top
   currentPlayer: Player;
   winner: Player | "draw" | null;
+  winningLine?: { row: number; col: number }[]; // the 4+ cells forming the win
   moveCount: number;
   lastMove?: { row: number; col: number };
 }
@@ -54,12 +55,13 @@ export function dropPiece(state: GameState, col: number): GameState {
   newBoard[targetRow][col] = state.currentPlayer;
 
   const moveCount = state.moveCount + 1;
-  const winner = checkWinner(newBoard, state.currentPlayer, targetRow, col, moveCount);
+  const { winner, winningLine } = checkWinner(newBoard, state.currentPlayer, targetRow, col, moveCount);
 
   return {
     board: newBoard,
     currentPlayer: state.currentPlayer === "X" ? "O" : "X",
     winner,
+    winningLine,
     moveCount,
     lastMove: { row: targetRow, col },
   };
@@ -72,7 +74,7 @@ function checkWinner(
   row: number,
   col: number,
   moveCount: number,
-): Player | "draw" | null {
+): { winner: Player | "draw" | null; winningLine?: { row: number; col: number }[] } {
   const directions = [
     [0, 1],  // horizontal
     [1, 0],  // vertical
@@ -81,26 +83,28 @@ function checkWinner(
   ];
 
   for (const [dr, dc] of directions) {
-    let count = 1;
-    // Count forward
+    const cells: { row: number; col: number }[] = [{ row, col }];
+    // Collect forward
     for (let i = 1; i < WIN_LENGTH; i++) {
       const r = row + dr * i;
       const c = col + dc * i;
       if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== player) break;
-      count++;
+      cells.push({ row: r, col: c });
     }
-    // Count backward
+    // Collect backward
     for (let i = 1; i < WIN_LENGTH; i++) {
       const r = row - dr * i;
       const c = col - dc * i;
       if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c] !== player) break;
-      count++;
+      cells.push({ row: r, col: c });
     }
-    if (count >= WIN_LENGTH) return player;
+    if (cells.length >= WIN_LENGTH) {
+      return { winner: player, winningLine: cells };
+    }
   }
 
-  if (moveCount === ROWS * COLS) return "draw";
-  return null;
+  if (moveCount === ROWS * COLS) return { winner: "draw" };
+  return { winner: null };
 }
 
 export function renderBoard(state: GameState): string {
