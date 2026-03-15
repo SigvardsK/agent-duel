@@ -441,12 +441,13 @@ async function run() {
   state.status = "Requesting airdrops...";
   render(state);
 
-  const fundedX = await fundWalletWithRetry(connection, walletX, 10);
+  const FUND_AMOUNT = 2; // DevNet faucet limits to ~2 SOL per request
+  const fundedX = await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
   state.walletX.balance = await getBalance(connection, walletX);
   render(state);
   await sleep(400);
 
-  const fundedO = await fundWalletWithRetry(connection, walletO, 10);
+  const fundedO = await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
   state.walletO.balance = await getBalance(connection, walletO);
 
   if (!fundedX || !fundedO) {
@@ -454,8 +455,8 @@ async function run() {
     render(state);
     await sleep(30000);
     // Retry once more before giving up
-    if (!fundedX) await fundWalletWithRetry(connection, walletX, 10);
-    if (!fundedO) await fundWalletWithRetry(connection, walletO, 10);
+    if (!fundedX) await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
+    if (!fundedO) await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
     state.walletX.balance = await getBalance(connection, walletX);
     state.walletO.balance = await getBalance(connection, walletO);
   }
@@ -491,11 +492,11 @@ async function run() {
         state.status = "Low balance — requesting airdrop...";
         render(state);
         if (balX < MIN_BALANCE) {
-          await fundWalletWithRetry(connection, walletX, 10);
+          await fundWalletWithRetry(connection, walletX, FUND_AMOUNT);
           state.walletX!.balance = await getBalance(connection, walletX);
         }
         if (balO < MIN_BALANCE) {
-          await fundWalletWithRetry(connection, walletO, 10);
+          await fundWalletWithRetry(connection, walletO, FUND_AMOUNT);
           state.walletO!.balance = await getBalance(connection, walletO);
         }
         state.status = "Wallets topped up";
