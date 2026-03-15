@@ -441,8 +441,8 @@ async function run() {
 
   const connection = new Connection(RPC_URL, "confirmed");
 
-  // Start web server if requested
-  if (web) {
+  // Start web server if requested — only once (avoid EADDRINUSE on restart)
+  if (web && !server) {
     server = createServer(port);
   }
 
