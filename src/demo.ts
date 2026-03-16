@@ -13,10 +13,10 @@ import { createServer, DuelServer } from "./server.js";
 import { loadHistory, saveHistory } from "./history.js";
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
-const STAKE = 0.1;
+const STAKE = 0.05;
 const WINS_NEEDED = 2;
 const MAX_GAMES = 5;
-const MIN_BALANCE = 0.15; // SOL — stop if either wallet drops below this (can't afford stake + fees)
+const MIN_BALANCE = 0.08; // SOL — stop if either wallet drops below this (can't afford stake + fees)
 const DEFAULT_MAX_ROUNDS = 50;
 const DEFAULT_WEB_PORT = parseInt(process.env.PORT || "8080");
 const WEB_BETTING_WINDOW_SECS = 15;
@@ -462,14 +462,19 @@ async function setupWallets(
 
   // Fund wallets — treasury transfer first, airdrop as fallback
   state.phase = "funding";
-  const FUND_AMOUNT = 0.2;
+  const FUND_AMOUNT = 0.1;
   const treasury = loadTreasury();
 
   if (treasury) {
+    const tPubkey = treasury.keypair.publicKey.toBase58();
+    const tBal = await getBalance(connection, treasury);
+    console.log(`[wallet] Treasury: ${tPubkey}`);
+    console.log(`[wallet] Treasury balance: ${tBal} SOL`);
+    if (tBal < 0.5) {
+      console.warn(`[wallet] WARNING: Treasury balance low (${tBal} SOL) — top up soon`);
+    }
     state.status = "Funding from treasury...";
     render(state);
-    const tBal = await getBalance(connection, treasury);
-    console.log(`[wallet] Treasury balance: ${tBal} SOL`);
 
     const fundSigX = await fundFromTreasury(connection, treasury, walletX, FUND_AMOUNT);
     if (fundSigX) {
@@ -565,7 +570,7 @@ async function runGameLoop(
   delay: number,
   idle: boolean,
 ): Promise<void> {
-  const FUND_AMOUNT = 0.2;
+  const FUND_AMOUNT = 0.1;
   let round = 0;
   let idleTimerStart: number | null = null;
 

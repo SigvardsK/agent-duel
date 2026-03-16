@@ -237,6 +237,18 @@ npx vitest --watch     # Watch mode
 - `.claude/skills/key-management/SKILL.md` — Wallet security by environment
 - `.claude/skills/content-templates/SKILL.md` — Launch content templates for Twitter, HN, Reddit, video
 
+## Key Management (LR-2026-002)
+
+Any wallet/keypair creation MUST follow this checklist:
+1. Save keypair file to disk (`*.keypair.json` — covered by `.gitignore`)
+2. Add env var to `.env` for local dev
+3. Document in `.env.example` with generation instructions
+4. Log public key on startup
+5. Record public key in Claude memory
+6. Set in deployment platform (Railway)
+
+A secret in exactly one location is a single point of failure. Build persistence discipline on DevNet — it transfers to Mainnet.
+
 ## Related
 
 - `sigvardsk/x402-deep-analysis.md` — Payment protocol analysis
