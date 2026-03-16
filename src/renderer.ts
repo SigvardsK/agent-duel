@@ -201,13 +201,15 @@ export function renderFrame(state: DuelState): void {
         const p = state.market.payouts[i];
         const sign = p.profit >= 0 ? "+" : "";
         const profitColor = p.profit >= 0 ? green : red;
-        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(bet.side))}  ${profitColor(bold(sign + p.profit.toFixed(2)))}`;
+        const sideName = bet.side === "X" ? "Neo" : "Smith";
+        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(sideName))}  ${profitColor(bold(sign + p.profit.toFixed(2)))}`;
       } else {
-        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(bet.side))}`;
+        const sideName = bet.side === "X" ? "Neo" : "Smith";
+        betText = `${padRight(bet.name + ":", 10)} ${yellow(bet.amount.toFixed(2))} on ${sideColor(bold(sideName))}`;
       }
       lines.push(line(`${dim("│")} ${padRight(betText, W - 4)} ${dim("│")}`));
     }
-    const oddsText = `Pool: ${yellow(bold(state.market.pool.toFixed(2) + " SOL"))}  Odds: ${cyan(`X ${odds.x}%`)} ${red(`O ${odds.o}%`)}`;
+    const oddsText = `Pool: ${yellow(bold(state.market.pool.toFixed(2) + " SOL"))}  Odds: ${cyan(`Neo ${odds.x}%`)} ${red(`Smith ${odds.o}%`)}`;
     lines.push(line(`${dim("│")} ${padRight(oddsText, W - 4)} ${dim("│")}`));
 
     // House cut display
@@ -226,7 +228,8 @@ export function renderFrame(state: DuelState): void {
   const seriesOver = state.market?.resolved;
   if (!seriesOver && state.phase === "outcome" && state.game?.winner && state.game.winner !== "draw") {
     const winColor = state.game.winner === "X" ? cyan : red;
-    statusText = `${winColor(bold(state.game.winner))} ${boldGreen("WINS!")}`;
+    const winnerName = state.game.winner === "X" ? "Neo" : "Smith";
+    statusText = `${winColor(bold(winnerName))} ${boldGreen("WINS!")}`;
   } else if (!seriesOver && state.phase === "outcome" && state.game?.winner === "draw") {
     statusText = yellow(bold("DRAW — game does not count"));
   }

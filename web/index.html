@@ -891,7 +891,8 @@ body::after{
     if (!resolved && s.phase === 'outcome' && s.game) {
       if (s.game.winner && s.game.winner !== 'draw') {
         var color = s.game.winner === 'X' ? 'var(--cyan)' : 'var(--red)';
-        text = '<span class="winner-text" style="color:' + color + '">' + s.game.winner + '</span> <span class="winner-text" style="color:var(--green)">WINS!</span>';
+        var winnerName = s.game.winner === 'X' ? 'Neo' : 'Smith';
+        text = '<span class="winner-text" style="color:' + color + '">' + winnerName + '</span> <span class="winner-text" style="color:var(--green)">WINS!</span>';
       } else if (s.game.winner === 'draw') {
         text = '<span class="winner-text" style="color:var(--yellow)">DRAW</span> <span style="color:var(--dim)">- game does not count</span>';
       }
@@ -923,7 +924,8 @@ body::after{
         var profitCls = p.profit >= 0 ? 'win' : 'loss';
         profitHtml = '<span class="profit ' + profitCls + '">' + sign + p.profit.toFixed(2) + '</span>';
       }
-      html += '<div class="bet-row"><span><span class="side ' + b.side + '">' + b.side + '</span><span class="bettor-name">' + esc(b.name) + '</span></span><span><span class="amt">' + b.amount.toFixed(2) + '</span> ' + profitHtml + '</span></div>';
+      var sideName = b.side === 'X' ? 'Neo' : 'Smith';
+      html += '<div class="bet-row"><span><span class="side ' + b.side + '">' + sideName + '</span><span class="bettor-name">' + esc(b.name) + '</span></span><span><span class="amt">' + b.amount.toFixed(2) + '</span> ' + profitHtml + '</span></div>';
     }
 
     // Pool + odds
