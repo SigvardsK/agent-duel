@@ -133,6 +133,7 @@ The live site runs on Railway with a treasury wallet for funding:
 | **Funding** | Treasury wallet pre-funded via web faucet, transfers to game wallets |
 | **Monitoring** | `/health` endpoint, `/api/state` for current game state |
 | **Cost** | ~$5-10/mo Railway + ~$115-173/mo Haiku API (depending on delay setting) |
+| **History** | Attach a Railway volume mounted at `/app/data` to persist match history across deploys |
 
 ### API Endpoints
 

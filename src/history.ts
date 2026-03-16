@@ -1,8 +1,10 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { HistoryEntry } from "./renderer.js";
 
-const DEFAULT_PATH = "./data/history.json";
+// Use Railway volume mount if available, otherwise local ./data/
+const VOLUME_PATH = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const DEFAULT_PATH = VOLUME_PATH ? join(VOLUME_PATH, "history.json") : "./data/history.json";
 
 export function loadHistory(filepath: string = DEFAULT_PATH): HistoryEntry[] {
   try {
