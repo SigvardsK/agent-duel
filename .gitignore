@@ -4,3 +4,11 @@ dist/
 *.keypair.json
 test-ledger/
 data/
+
+# Internal docs (not for public repo)
+LEARNINGS.md
+ASSESSMENT.md
+.claude/learning-records/
+
+# Cropped/working assets (keep only demo-screenshot.png)
+assets/cropped-*.png
