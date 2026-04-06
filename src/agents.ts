@@ -142,14 +142,32 @@ Use the tools provided: first read_board to see the current state, then drop_pie
   while (attempts < maxAttempts) {
     attempts++;
 
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      temperature: 0,
-      system: systemPrompt,
-      tools: AGENT_TOOLS,
-      messages,
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 1024,
+        temperature: 0,
+        system: systemPrompt,
+        tools: AGENT_TOOLS,
+        messages,
+      });
+    } catch (err: unknown) {
+      const apiErr = err as { status?: number; error?: { error?: { message?: string } } };
+      const status = apiErr.status;
+      const msg = apiErr.error?.error?.message ?? (err as Error).message;
+
+      if (status === 400 || status === 401 || status === 403) {
+        console.error(`  [${config.name}] API auth/billing error (${status}): ${msg}`);
+      } else {
+        console.error(`  [${config.name}] API error (${status ?? "unknown"}): ${msg}`);
+      }
+
+      // Brief cooldown to avoid hammering a broken API
+      await new Promise(r => setTimeout(r, 2000));
+      console.log(`  [${config.name}] Falling back to random move`);
+      return pickRandomMove(state);
+    }
 
     // Check for tool use
     const toolUseBlocks = response.content.filter(
